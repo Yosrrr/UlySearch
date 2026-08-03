@@ -4,17 +4,12 @@ import { Building2, CalendarClock } from "lucide-react";
 import ScoreBadge from "./ScoreBadge";
 import TenderStatusBadge from "./TenderStatusBadge";
 import { formatDate, daysUntil } from "../../utils/formatters";
-
-function hasScore(tender) {
-  return (
-    tender.score_details &&
-    Object.values(tender.score_details).some((v) => typeof v === "number")
-  );
-}
+import { extractScoreInfo } from "../../utils/scoreDetails";
 
 export default function TenderCard({ tender }) {
   const remaining = daysUntil(tender.date_limite);
   const urgent = remaining !== null && remaining <= 5;
+  const { hasScore, score } = extractScoreInfo(tender.score_details);
 
   return (
     <Link
@@ -29,8 +24,8 @@ export default function TenderCard({ tender }) {
             <span className="truncate">{tender.acheteur}</span>
           </div>
         </div>
-        {hasScore(tender) ? (
-          <ScoreBadge score={tender.score} />
+        {hasScore ? (
+          <ScoreBadge score={score} />
         ) : (
           <span className="whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-400">
             Score à venir

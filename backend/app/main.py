@@ -1,16 +1,21 @@
-# app/main.py
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import router as api_router
-from app.api.auth import router as auth_router
-from app.api.tenders import router as tenders_router
 from app.core.config import settings
+from app.api import auth, tenders
 
 app = FastAPI(title=settings.APP_NAME)
 
-app.include_router(api_router, prefix="/api")
-app.include_router(auth_router, prefix="/api")
-app.include_router(tenders_router, prefix="/api")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(auth.router, prefix="/api")
+app.include_router(tenders.router, prefix="/api")
 
 
 @app.get("/health")

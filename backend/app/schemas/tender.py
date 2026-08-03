@@ -28,12 +28,19 @@ class TenderOut(BaseModel):
 
 
 def extract_best_score(score_details) -> tuple[int, Optional[str]]:
-    """Retourne (score_max, nom_de_la_catégorie_correspondante) à partir de
-    score_details, ex. {"MATERIEL_ROULANT": 60, "ENGINS_TP": 0}."""
+    """score_details a la forme :
+    {"MATERIEL_ROULANT": {"score": 90, "mots_cles_matches": [...]}, "ENGINS_TP": {"score": 0, ...}, ...}
+    """
     if not score_details or not isinstance(score_details, dict):
         return 0, None
 
-    numeric_items = {k: v for k, v in score_details.items() if isinstance(v, (int, float))}
+    numeric_items = {}
+    for category, value in score_details.items():
+        if isinstance(value, dict) and isinstance(value.get("score"), (int, float)):
+            numeric_items[category] = value["score"]
+        elif isinstance(value, (int, float)):  # tolère aussi une forme à plat si elle existe ailleurs
+            numeric_items[category] = value
+
     if not numeric_items:
         return 0, None
 

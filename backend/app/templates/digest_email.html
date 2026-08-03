@@ -1,0 +1,23 @@
+<html>
+<body style="font-family: Arial, sans-serif;">
+  <h2>Récapitulatif quotidien — {{ commercial }}</h2>
+  {% if tenders %}
+  <table border="1" cellpadding="6" style="border-collapse: collapse; width:100%;">
+    <tr style="background:#1F3864; color:white;">
+      <th>Objet</th><th>Acheteur</th><th>Date limite</th><th>Client connu</th><th>Lien</th>
+    </tr>
+    {% for t in tenders %}
+    <tr>
+      <td>{{ t.objet }}</td>
+      <td>{{ t.acheteur }}</td>
+      <td>{{ t.date_limite or "Non communiquée" }}</td>
+      <td>{% if t.acheteur_connu == "Oui" %}⭐ Oui{% else %}—{% endif %}</td>
+      <td><a href="{{ t.lien }}">Voir l'avis</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>Aucune nouvelle offre aujourd'hui.</p>
+  {% endif %}
+</body>
+</html>

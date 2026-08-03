@@ -17,7 +17,7 @@ export function AuthProvider({ children }) {
       localStorage.setItem("sotradies_user", JSON.stringify(data.user));
       setUser(data.user);
       return data;
-    } catch (err) {
+    } catch {
       // Le backend n'a pas encore de route /auth/login → mode démo temporaire.
       // À retirer dès que la vraie authentification est branchée côté FastAPI.
       console.warn("[démo] /auth/login indisponible — connexion de test utilisée.");
@@ -42,6 +42,7 @@ export function AuthProvider({ children }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth doit être utilisé dans un <AuthProvider>");

@@ -29,6 +29,8 @@ class Sotradies(Base):
 
     commercial_assigne = Column(String(255), nullable=True)
     score_details = Column(JSONB, nullable=True)
+    
+    acheteur_connu = Column(String(10), nullable=True)  # "Oui" | "Non" | None
     # ex: {"MATERIEL_ROULANT": 60, "ENGINS_TP": 0, ...} — mots-clés matchés inclus,
     # pour affichage dans le dashboard ("les mots-clés qui ont déclenché la détection")
 

@@ -18,7 +18,7 @@ export default function LoginPage() {
     try {
       await signIn(email, password);
       navigate("/");
-    } catch (err) {
+    } catch {
       setError("Connexion impossible — vérifiez l'adresse e-mail et le mot de passe.");
     } finally {
       setLoading(false);
