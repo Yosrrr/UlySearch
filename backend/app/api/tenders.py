@@ -17,21 +17,22 @@ LIST_CACHE_TTL = 30  # secondes — aligné avec staleTime (30_000ms) du fronten
 
 @router.get("", response_model=list[TenderOut])
 def list_tenders(
+    search: str | None = Query(None, description="Recherche libre sur l'objet ou l'acheteur"),
     commercial: str | None = Query(None),
     statut: str | None = Query(None),
     categorie: str | None = Query(None),
     score_min: int | None = Query(None),
-    search: str | None = Query(None),
+    include_rejected: bool = Query(False, description="Inclure les marchés hors périmètre SOTRADIES"),
     user=Depends(get_current_user),
 ):
-    cache_key = f"tenders:list:{commercial}:{statut}:{categorie}:{score_min}:{search}"
-    cached = cache_get(cache_key)
-    if cached is not None:
-        return cached
-
     db = SessionLocal()
     query = db.query(Sotradies)
 
+    if search:
+        like = f"%{search}%"
+        query = query.filter(
+            Sotradies.objet.ilike(like) | Sotradies.acheteur.ilike(like)
+        )
     if commercial and commercial != "Tous":
         query = query.filter(Sotradies.commercial_assigne == commercial)
     if statut and statut != "Tous":
@@ -43,14 +44,17 @@ def list_tenders(
     out = [to_tender_out(t) for t in results]
 
     if score_min is not None:
+        # L'utilisateur a explicitement choisi un seuil (ex: filtre "≥ 80%")
         out = [t for t in out if t.score >= score_min]
-    if categorie and categorie != "Toutes":
-        out = [t for t in out if t.top_categorie == categorie]
-    if search:
-        s = search.lower()
-        out = [t for t in out if s in (t.objet or "").lower() or s in (t.acheteur or "").lower()]
+    elif not include_rejected:
+        # Comportement par défaut : ne montrer QUE les offres concernant
+        # SOTRADIES, c'est-à-dire celles qui ont matché au moins une catégorie
+        # métier (score > 0) — on garde aussi les marchés "retenus" manuellement.
+        out = [t for t in out if t.score > 0 or t.statut == "retenu"]
 
-    cache_set(cache_key, [t.model_dump(mode="json") for t in out], LIST_CACHE_TTL)
+    if categorie and categorie != "Toutes":
+        out = [t for t in out if (t.top_categorie or "") == categorie]
+
     return out
 
 

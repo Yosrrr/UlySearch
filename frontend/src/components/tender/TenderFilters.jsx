@@ -1,5 +1,8 @@
 // src/components/tender/TenderFilters.jsx
+import { CATEGORY_LABELS, categoryLabel } from "../../utils/categories";
+
 const STATUTS = ["Tous", "nouveau", "retenu", "sans_suite"];
+const CATEGORIES = ["Toutes", ...Object.keys(CATEGORY_LABELS)];
 
 export default function TenderFilters({ value, onChange }) {
   function update(field, val) {
@@ -15,13 +18,17 @@ export default function TenderFilters({ value, onChange }) {
         onChange={(e) => update("search", e.target.value)}
         className="min-w-[220px] flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-ink-700"
       />
-      <input
-        type="text"
-        placeholder="Catégorie (ex: BTP TP)"
-        value={value.categorie ?? ""}
+      <select
+        value={value.categorie ?? "Toutes"}
         onChange={(e) => update("categorie", e.target.value)}
-        className="w-44 rounded-lg border border-slate-200 px-3 py-2 text-sm"
-      />
+        className="w-52 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+      >
+        {CATEGORIES.map((c) => (
+          <option key={c} value={c}>
+            {c === "Toutes" ? "Toutes les catégories" : categoryLabel(c)}
+          </option>
+        ))}
+      </select>
       <select
         value={value.statut ?? "Tous"}
         onChange={(e) => update("statut", e.target.value)}
