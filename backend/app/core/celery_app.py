@@ -1,18 +1,25 @@
-from celery.schedules import crontab
+"""
+Instance Celery centrale. Le broker (Redis) est OBLIGATOIRE pour que
+Celery Beat et les Workers puissent communiquer.
+"""
+from celery import Celery
 
-from app.core.celery_app import celery_app
+from app.core.config import settings
 
-celery_app.conf.beat_schedule = {
-    "kickoff-scan-matinal": {
-        "task": "tasks.kickoff_daily_scan",
-        "schedule": crontab(minute=58, hour=6, day_of_week="1-5"),
-    },
-    "scan-repete-journee": {
-        "task": "tasks.run_daily_scan",
-        "schedule": crontab(minute="*/30", hour="7-18", day_of_week="1-5"),
-    },
-    "digest-quotidien-8h": {
-        "task": "tasks.send_digest",
-        "schedule": crontab(minute=0, hour=8, day_of_week="1-5"),
-    },
-}
+celery_app = Celery(
+    "sotradies_watch",
+    broker=settings.REDIS_URL,
+    backend=settings.REDIS_URL,
+)
+
+celery_app.conf.update(
+    task_serializer="json",
+    accept_content=["json"],
+    result_serializer="json",
+    timezone="Africa/Tunis",
+    enable_utc=True,
+)
+
+celery_app.autodiscover_tasks(["app.workers"])
+
+from app.core import scheduler  # noqa: E402,F401 - enregistre celery_app.conf.beat_schedule

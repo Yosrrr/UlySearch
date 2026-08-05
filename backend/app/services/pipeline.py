@@ -10,7 +10,8 @@ import hashlib
 from datetime import date, datetime, timedelta
 
 from unidecode import unidecode
-
+from app.core.cache import cache_get, cache_set, cache_delete_pattern
+from app.schemas.sotradies import SotradiesRaw
 from app.core.database import SessionLocal
 from app.core.keywords import CATEGORIES
 from app.models.sotradies import Sotradies
@@ -19,6 +20,22 @@ from app.services.scrapers.appeloffres_scraper import AppeloffresScraper
 from app.services.keyword_classifier import score_all_categories, best_category
 from app.services.buyer_matcher import match_buyer
 
+SCRAPE_CACHE_TTL = 25 * 60  # 25 min — légèrement sous le cycle de 30 min
+
+
+def fetch_with_cache(scraper) -> list:
+    """Sert un résultat déjà scrapé si disponible en cache (moins de 25 min),
+    pour ne jamais solliciter un site plusieurs fois en rafale."""
+    cache_key = f"scrape:{scraper.source_name}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        print(f"[cache] {scraper.source_name} : résultat servi depuis le cache "
+              f"(aucune requête envoyée au site)")
+        return [SotradiesRaw(**item) for item in cached]
+
+    tenders = scraper.fetch_tenders()
+    cache_set(cache_key, [t.model_dump(mode="json") for t in tenders], SCRAPE_CACHE_TTL)
+    return tenders
 
 def compute_hash(t) -> str:
     parts = [
@@ -58,7 +75,7 @@ def run_pipeline(target_date: date | None = None) -> dict:
 
     for scraper in scrapers:
         print(f"[pipeline] Source : {scraper.source_name}")
-        all_tenders = scraper.fetch_tenders()
+        all_tenders = fetch_with_cache(scraper)
         tenders, sans_date = filter_today_only(all_tenders, target_date)
         total_hors_date += (len(all_tenders) - len(tenders) - sans_date)
         total_sans_date += sans_date
@@ -105,6 +122,7 @@ def run_pipeline(target_date: date | None = None) -> dict:
 
     db.commit()
     db.close()
+    cache_delete_pattern("tenders:list:*")
 
     retenus.sort(key=lambda e: e[0], reverse=True)
 

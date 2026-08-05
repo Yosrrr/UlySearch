@@ -11,6 +11,7 @@ class TenderOut(BaseModel):
     top_categorie: str | None
     score: int
     score_details: dict[str, Any] | None = None
+    raison_rejet: str | None = None
     statut: str
     commercial_assigne: str | None
     acheteur_connu: str | None
@@ -22,6 +23,14 @@ class TenderOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+def _compute_rejection_reason(score_details: dict, score: int) -> str | None:
+    if not score_details:
+        return "Aucun mot-clé métier détecté"
+    if score == 0:
+        return "Aucun mot-clé métier détecté"
+    return f"Score de pertinence insuffisant ({score}%)"
 
 
 def to_tender_out(t) -> TenderOut:
@@ -42,6 +51,7 @@ def to_tender_out(t) -> TenderOut:
         top_categorie=best_cat,
         score=best_score,
         score_details=t.score_details,
+        raison_rejet=_compute_rejection_reason(score_details, best_score),
         statut=t.statut,
         commercial_assigne=t.commercial_assigne,
         acheteur_connu=t.acheteur_connu,

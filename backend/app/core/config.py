@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = "changez-moi-en-production-avec-une-vraie-cle-secrete"
     JWT_EXPIRE_MINUTES: int = 480  # 8h — une journée de travail
 
+    CACHE_REDIS_URL: str = "redis://localhost:6379/2"
+    
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
     SMTP_USER: str = ""

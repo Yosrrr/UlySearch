@@ -11,3 +11,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     if payload is None:
         raise HTTPException(status_code=401, detail="Token invalide ou expiré")
     return payload
+def require_admin(user: dict = Depends(get_current_user)) -> dict:
+    if user.get("profil") != "admin":
+        raise HTTPException(status_code=403, detail="Accès réservé aux administrateurs")
+    return user

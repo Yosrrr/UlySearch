@@ -15,3 +15,7 @@ export async function getTender(id) {
   const { data } = await apiClient.get(`/tenders/${id}`);
   return data;
 }
+export async function getRejectedTenders() {
+  const { data } = await apiClient.get("/tenders/rejected");
+  return data;
+}

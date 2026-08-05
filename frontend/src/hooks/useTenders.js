@@ -17,3 +17,12 @@ export function useTender(id) {
     enabled: Boolean(id),
   });
 }
+import { getRejectedTenders } from "../api/tenders";
+
+export function useRejectedTenders() {
+  return useQuery({
+    queryKey: ["rejected-tenders"],
+    queryFn: getRejectedTenders,
+    staleTime: 30_000,
+  });
+}
