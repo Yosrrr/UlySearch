@@ -7,8 +7,12 @@ from app.api.deps import get_current_user
 from datetime import datetime
 from pydantic import BaseModel
 from app.models.audit_log import AuditLog
+from app.core.config import settings
+from app.core.cache import cache_get, cache_set
 
 router = APIRouter(prefix="/tenders", tags=["tenders"])
+
+LIST_CACHE_TTL = 30  # secondes — aligné avec staleTime (30_000ms) du frontend
 
 
 @router.get("", response_model=list[TenderOut])
@@ -17,8 +21,14 @@ def list_tenders(
     statut: str | None = Query(None),
     categorie: str | None = Query(None),
     score_min: int | None = Query(None),
+    search: str | None = Query(None),
     user=Depends(get_current_user),
 ):
+    cache_key = f"tenders:list:{commercial}:{statut}:{categorie}:{score_min}:{search}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     db = SessionLocal()
     query = db.query(Sotradies)
 
@@ -36,7 +46,11 @@ def list_tenders(
         out = [t for t in out if t.score >= score_min]
     if categorie and categorie != "Toutes":
         out = [t for t in out if t.top_categorie == categorie]
+    if search:
+        s = search.lower()
+        out = [t for t in out if s in (t.objet or "").lower() or s in (t.acheteur or "").lower()]
 
+    cache_set(cache_key, [t.model_dump(mode="json") for t in out], LIST_CACHE_TTL)
     return out
 
 
@@ -71,6 +85,18 @@ def update_tender_status(tender_id: str, payload: TenderStatusUpdate, user=Depen
     db.refresh(t)
     db.close()
     return to_tender_out(t)
+
+@router.get("/rejected", response_model=list[TenderOut])
+def list_rejected_tenders(user=Depends(get_current_user)):
+    db = SessionLocal()
+    results = db.query(Sotradies).order_by(Sotradies.date_detection.desc()).all()
+    db.close()
+    out = [to_tender_out(t) for t in results]
+    return [
+        t for t in out
+        if t.score < settings.RELEVANCE_RETAIN_THRESHOLD and t.statut != "retenu"
+    ]
+
 
 @router.get("/{tender_id}", response_model=TenderOut)
 def get_tender(tender_id: str, user=Depends(get_current_user)):

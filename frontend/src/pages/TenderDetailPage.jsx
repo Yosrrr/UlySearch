@@ -134,8 +134,8 @@ export default function TenderDetailPage() {
           </div>
         )}
 
-        <div className="mt-6 border-t border-slate-100 pt-6">
-          
+<div className="mt-6 border-t border-slate-100 pt-6">
+          <a
             href={tender.lien}
             target="_blank"
             rel="noreferrer"
