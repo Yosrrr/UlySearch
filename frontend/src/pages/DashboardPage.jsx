@@ -1,6 +1,6 @@
 ﻿// src/pages/DashboardPage.jsx
 import { AlertTriangle, Clock, ArrowRight } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import StatCard from "../components/ui/StatCard";
 import Spinner from "../components/ui/Spinner";
 import Alert from "../components/ui/Alert";

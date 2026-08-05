@@ -1,11 +1,20 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.database import SessionLocal
 from app.models.system_action_log import SystemActionLog
 from app.api.deps import require_admin
 from app.services import process_manager
+from app.core.config import settings
 
 router = APIRouter(prefix="/admin/system", tags=["admin-system"])
+
+
+def _require_process_control():
+    if not settings.ALLOW_PROCESS_CONTROL:
+        raise HTTPException(
+            status_code=409,
+            detail="Les workers sont gérés comme services séparés sur cette plateforme.",
+        )
 
 
 def _log_action(user: dict, action: str):
@@ -22,6 +31,7 @@ def status(user=Depends(require_admin)):
 
 @router.post("/worker/start")
 def worker_start(user=Depends(require_admin)):
+    _require_process_control()
     result = process_manager.start_worker()
     _log_action(user, "start_worker")
     return result
@@ -29,6 +39,7 @@ def worker_start(user=Depends(require_admin)):
 
 @router.post("/worker/stop")
 def worker_stop(user=Depends(require_admin)):
+    _require_process_control()
     result = process_manager.stop_worker()
     _log_action(user, "stop_worker")
     return result
@@ -36,6 +47,7 @@ def worker_stop(user=Depends(require_admin)):
 
 @router.post("/beat/start")
 def beat_start(user=Depends(require_admin)):
+    _require_process_control()
     result = process_manager.start_beat()
     _log_action(user, "start_beat")
     return result
@@ -43,6 +55,7 @@ def beat_start(user=Depends(require_admin)):
 
 @router.post("/beat/stop")
 def beat_stop(user=Depends(require_admin)):
+    _require_process_control()
     result = process_manager.stop_beat()
     _log_action(user, "stop_beat")
     return result

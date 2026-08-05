@@ -1,0 +1,132 @@
+databases:
+  - name: sotradies-db
+    plan: basic-256mb
+    region: frankfurt
+    databaseName: sotradies
+    user: sotradies
+
+services:
+  - type: keyvalue
+    name: sotradies-redis
+    plan: starter
+    region: frankfurt
+    ipAllowList: []
+    maxmemoryPolicy: noeviction
+
+  - type: web
+    name: sotradies
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    preDeployCommand: python -m scripts.bootstrap
+    envVars:
+      - key: ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sotradies-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: sotradies-redis
+          property: connectionString
+      - key: CACHE_REDIS_URL
+        fromService:
+          type: keyvalue
+          name: sotradies-redis
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: INITIAL_ADMIN_EMAIL
+        sync: false
+      - key: INITIAL_ADMIN_PASSWORD
+        sync: false
+      - key: INITIAL_ADMIN_NAME
+        value: Administrateur SOTRADIES
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SENDER_EMAIL
+        sync: false
+
+  - type: worker
+    name: sotradies-worker
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: celery -A app.core.celery_app worker --loglevel=INFO
+    envVars:
+      - key: ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sotradies-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: sotradies-redis
+          property: connectionString
+      - key: CACHE_REDIS_URL
+        fromService:
+          type: keyvalue
+          name: sotradies-redis
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        fromService:
+          type: web
+          name: sotradies
+          envVarKey: JWT_SECRET_KEY
+      - key: SMTP_USER
+        fromService:
+          type: web
+          name: sotradies
+          envVarKey: SMTP_USER
+      - key: SMTP_PASSWORD
+        fromService:
+          type: web
+          name: sotradies
+          envVarKey: SMTP_PASSWORD
+      - key: SENDER_EMAIL
+        fromService:
+          type: web
+          name: sotradies
+          envVarKey: SENDER_EMAIL
+
+  - type: worker
+    name: sotradies-scheduler
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: celery -A app.core.celery_app beat --loglevel=INFO --schedule=/tmp/celerybeat-schedule
+    envVars:
+      - key: ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sotradies-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: sotradies-redis
+          property: connectionString
+      - key: CACHE_REDIS_URL
+        fromService:
+          type: keyvalue
+          name: sotradies-redis
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        fromService:
+          type: web
+          name: sotradies
+          envVarKey: JWT_SECRET_KEY

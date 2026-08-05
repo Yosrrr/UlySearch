@@ -6,15 +6,19 @@ from app.core.security import hash_password
 Base.metadata.create_all(bind=engine)
 
 email = input("E-mail du compte : ").strip()
-full_name = input("Nom complet : ").strip()
+nom = input("Nom complet : ").strip()
 password = input("Mot de passe : ").strip()
+profil = input("Profil (admin / user) [admin] : ").strip() or "admin"
+
+if profil not in ("admin", "user"):
+    raise SystemExit("Profil invalide : utilisez admin ou user.")
 
 db = SessionLocal()
 existing = db.query(User).filter(User.email == email).first()
 if existing:
     print("Un compte avec cet e-mail existe déjà.")
 else:
-    user = User(email=email, full_name=full_name, hashed_password=hash_password(password))
+    user = User(email=email, nom=nom, password_hash=hash_password(password), profil=profil)
     db.add(user)
     db.commit()
     print(f"Compte créé pour {email}.")

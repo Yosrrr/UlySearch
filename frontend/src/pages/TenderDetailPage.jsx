@@ -1,5 +1,5 @@
 ﻿// src/pages/TenderDetailPage.jsx
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link } from "react-router";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { ArrowLeft, ExternalLink, Check } from "lucide-react";
 import PageWrapper from "../components/layout/PageWrapper";

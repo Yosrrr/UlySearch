@@ -80,7 +80,7 @@ def update_tender_status(tender_id: str, payload: TenderStatusUpdate, user=Depen
     # Règle 7 : "Tout est audité" — trace qui a changé le statut, et quand
     db.add(AuditLog(
         sotradies_id=t.id,
-        utilisateur_email=getattr(user, "email", "inconnu"),
+        utilisateur_email=user.get("sub", "inconnu"),
         action="changement_statut",
         detail=f"{ancien_statut} -> {payload.statut}",
     ))

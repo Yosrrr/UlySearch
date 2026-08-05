@@ -1,5 +1,5 @@
 // src/components/layout/Sidebar.jsx
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router";
 import {
   LayoutDashboard, ClipboardList, Archive, Building2, SlidersHorizontal, Users, LogOut,
 } from "lucide-react";
