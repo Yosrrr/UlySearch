@@ -1,5 +1,5 @@
 // src/components/tender/TenderCard.jsx
-import { Link } from "react-router";
+import { Link } from "react-router-dom";
 import { Building2, CalendarClock } from "lucide-react";
 import ScoreBadge from "./ScoreBadge";
 import TenderStatusBadge from "./TenderStatusBadge";

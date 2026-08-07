@@ -3,11 +3,23 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from app.api.buyers import router as buyers_router
 
 from app.core.config import settings
-from app.api import auth, tenders, admin_system, admin_users
+from app.core.database import init_db
+from app.core.init_config import init_default_configuration
+
+# Importer tous les modèles pour les enregistrer dans Base.metadata
+from app.models import user, sotradies, sent_log, audit_log, known_buyer, system_action_log, configuration
+from app.api import auth, tenders, admin_system, admin_users, admin_config
 
 app = FastAPI(title=settings.APP_NAME)
+
+# Initialiser la base de données et la configuration au démarrage
+@app.on_event("startup")
+async def startup_event():
+    init_db()  # Créer les tables
+    init_default_configuration()  # Initialiser la configuration par défaut
 
 app.add_middleware(
     CORSMiddleware,
@@ -21,6 +33,8 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(tenders.router, prefix="/api")
 app.include_router(admin_system.router, prefix="/api")
 app.include_router(admin_users.router, prefix="/api")
+app.include_router(admin_config.router, prefix="/api")
+app.include_router(buyers_router, prefix="/api")
 
 
 @app.get("/health")

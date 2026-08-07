@@ -9,6 +9,8 @@ from pydantic import BaseModel
 from app.models.audit_log import AuditLog
 from app.core.config import settings
 from app.core.cache import cache_get, cache_set
+from app.models.audit_log import AuditLog
+from app.schemas.tender_out import TenderStatusUpdate
 
 router = APIRouter(prefix="/tenders", tags=["tenders"])
 
@@ -106,9 +108,42 @@ def list_rejected_tenders(user=Depends(get_current_user)):
 def get_tender(tender_id: str, user=Depends(get_current_user)):
     db = SessionLocal()
     t = db.query(Sotradies).filter_by(id=tender_id).first()
-    db.close()
 
     if not t:
+        db.close()
         raise HTTPException(status_code=404, detail="Marché introuvable")
+
+    db.add(AuditLog(
+        sotradies_id=tender_id,
+        utilisateur_email=user["sub"],
+        action="consultation",
+        detail=None,
+    ))
+    db.commit()
+    db.close()
+
+    return to_tender_out(t)
+
+@router.patch("/{tender_id}", response_model=TenderOut)
+def update_tender_status(tender_id: str, payload: TenderStatusUpdate, user=Depends(get_current_user)):
+    if payload.statut not in ("retenu", "sans_suite", "nouveau"):
+        raise HTTPException(status_code=400, detail="Statut invalide")
+
+    db = SessionLocal()
+    t = db.query(Sotradies).filter_by(id=tender_id).first()
+    if not t:
+        db.close()
+        raise HTTPException(status_code=404, detail="Marché introuvable")
+
+    t.statut = payload.statut
+    db.add(AuditLog(
+        sotradies_id=tender_id,
+        utilisateur_email=user["sub"],
+        action="changement_statut",
+        detail=f"Nouveau statut : {payload.statut}",
+    ))
+    db.commit()
+    db.refresh(t)
+    db.close()
 
     return to_tender_out(t)

@@ -1,0 +1,30 @@
+<html>
+<body style="font-family: Arial, sans-serif;">
+  <h2>Rapport hebdomadaire — Veille Appels d'Offres</h2>
+  <p>Période : {{ periode }}</p>
+
+  <h3>Vue d'ensemble</h3>
+  <table border="1" cellpadding="6" style="border-collapse: collapse;">
+    <tr><td><b>Marchés détectés</b></td><td>{{ total_detectes }}</td></tr>
+    <tr><td><b>Marchés retenus (score > 0%)</b></td><td>{{ total_retenus }}</td></tr>
+    <tr><td><b>Alertes instantanées envoyées</b></td><td>{{ total_alertes }}</td></tr>
+    <tr><td><b>Acheteurs connus détectés</b></td><td>{{ total_acheteurs_connus }}</td></tr>
+  </table>
+
+  <h3>Répartition par marque/commercial</h3>
+  <table border="1" cellpadding="6" style="border-collapse: collapse; width:100%;">
+    <tr style="background:#1F3864; color:white;"><th>Commercial</th><th>Nombre de marchés</th></tr>
+    {% for c in par_commercial %}
+    <tr><td>{{ c.commercial }}</td><td>{{ c.nombre }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h3>Répartition par source</h3>
+  <table border="1" cellpadding="6" style="border-collapse: collapse; width:100%;">
+    <tr style="background:#1F3864; color:white;"><th>Source</th><th>Nombre de marchés</th></tr>
+    {% for s in par_source %}
+    <tr><td>{{ s.source }}</td><td>{{ s.nombre }}</td></tr>
+    {% endfor %}
+  </table>
+</body>
+</html>

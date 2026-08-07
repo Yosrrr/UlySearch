@@ -1,5 +1,4 @@
-from datetime import datetime, date
-
+from datetime import datetime, date, timedelta
 from jinja2 import Environment, FileSystemLoader
 
 from app.core.config import settings
@@ -8,6 +7,7 @@ from app.core.database import SessionLocal
 from app.models.sotradies import Sotradies
 from app.models.sent_log import SentLog
 from app.services.mailer import send_email
+
 
 env = Environment(loader=FileSystemLoader("app/templates"))
 
@@ -80,3 +80,45 @@ def send_daily_digest(force: bool = False):
 
     db.commit()
     db.close()
+
+def send_reminders(force: bool = False):
+    """
+    Rappel J-3 et J-1 avant la date limite, pour tout marché non encore
+    traité (statut='nouveau'). Respecte la règle silence week-end.
+    """
+    if is_weekend() and not force:
+        print("[notifier] Week-end : pas de rappel.")
+        return
+
+    today = datetime.now().date()
+    db = SessionLocal()
+
+    marches = db.query(Sotradies).filter(
+        Sotradies.statut == "nouveau",
+        Sotradies.date_limite.isnot(None),
+        Sotradies.commercial_assigne.isnot(None),
+    ).all()
+
+    envoyes = 0
+    for t in marches:
+        jours_restants = (t.date_limite.date() - today).days
+        email = COMMERCIAL_EMAILS.get(t.commercial_assigne)
+        if not email:
+            continue
+
+        if jours_restants == 3 and not t.rappel_j3_envoye:
+            html = env.get_template("reminder_email.html").render(tender=t, jours_restants=3)
+            send_email(email, f"⏰ Rappel J-3 — {t.objet[:60]}", html)
+            t.rappel_j3_envoye = datetime.utcnow()
+            envoyes += 1
+
+        elif jours_restants == 1 and not t.rappel_j1_envoye:
+            html = env.get_template("reminder_email.html").render(tender=t, jours_restants=1)
+            send_email(email, f"⏰ Rappel J-1 (urgent) — {t.objet[:60]}", html)
+            t.rappel_j1_envoye = datetime.utcnow()
+            envoyes += 1
+
+    db.commit()
+    db.close()
+    print(f"[notifier] {envoyes} rappel(s) envoyé(s)")
+    return envoyes

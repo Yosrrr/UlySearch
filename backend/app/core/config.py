@@ -26,6 +26,10 @@ class Settings(BaseSettings):
 
     TUNEPS_USERNAME: str = ""
     TUNEPS_PASSWORD: str = ""
+    
+    GEMINI_API_KEY: str = ""
+    
+    DIRECTION_EMAIL: str = ""
 
     RELEVANCE_INSTANT_ALERT_THRESHOLD: int = 80
     RELEVANCE_RETAIN_THRESHOLD: int = 50

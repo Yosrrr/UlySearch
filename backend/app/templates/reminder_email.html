@@ -1,0 +1,13 @@
+<html>
+<body style="font-family: Arial, sans-serif;">
+  <h2 style="color:#d68910;">⏰ Rappel — date limite proche</h2>
+  <p>Le marché suivant n'a pas encore été traité, et sa date limite approche (<b>{{ jours_restants }} jour(s)</b>) :</p>
+  <table style="border-collapse: collapse; width:100%;">
+    <tr><td><b>Objet</b></td><td>{{ tender.objet }}</td></tr>
+    <tr><td><b>Acheteur</b></td><td>{{ tender.acheteur }}</td></tr>
+    <tr><td><b>Date limite</b></td><td>{{ tender.date_limite }}</td></tr>
+    <tr><td><b>Lien</b></td><td><a href="{{ tender.lien }}">{{ tender.lien }}</a></td></tr>
+  </table>
+  <p>Merci de traiter ce marché (le classer ou le confirmer) depuis le dashboard.</p>
+</body>
+</html>

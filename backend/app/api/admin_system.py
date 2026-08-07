@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
-
 from app.core.database import SessionLocal
 from app.models.system_action_log import SystemActionLog
-from app.api.deps import require_admin
+from app.api.deps import require_superadmin
 from app.services import process_manager
 from app.core.config import settings
 
@@ -25,12 +24,12 @@ def _log_action(user: dict, action: str):
 
 
 @router.get("/status")
-def status(user=Depends(require_admin)):
+def status(user=Depends(require_superadmin)):
     return process_manager.get_status()
 
 
 @router.post("/worker/start")
-def worker_start(user=Depends(require_admin)):
+def worker_start(user=Depends(require_superadmin)):
     _require_process_control()
     result = process_manager.start_worker()
     _log_action(user, "start_worker")
@@ -38,7 +37,7 @@ def worker_start(user=Depends(require_admin)):
 
 
 @router.post("/worker/stop")
-def worker_stop(user=Depends(require_admin)):
+def worker_stop(user=Depends(require_superadmin)):
     _require_process_control()
     result = process_manager.stop_worker()
     _log_action(user, "stop_worker")
@@ -46,7 +45,7 @@ def worker_stop(user=Depends(require_admin)):
 
 
 @router.post("/beat/start")
-def beat_start(user=Depends(require_admin)):
+def beat_start(user=Depends(require_superadmin)):
     _require_process_control()
     result = process_manager.start_beat()
     _log_action(user, "start_beat")
@@ -54,7 +53,7 @@ def beat_start(user=Depends(require_admin)):
 
 
 @router.post("/beat/stop")
-def beat_stop(user=Depends(require_admin)):
+def beat_stop(user=Depends(require_superadmin)):
     _require_process_control()
     result = process_manager.stop_beat()
     _log_action(user, "stop_beat")

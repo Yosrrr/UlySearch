@@ -1,7 +1,7 @@
 // src/components/layout/Sidebar.jsx
-import { NavLink, useNavigate } from "react-router";
+import { NavLink, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard, ClipboardList, Archive, Building2, SlidersHorizontal, Users, LogOut,
+  LayoutDashboard, ClipboardList, Archive, Building2, SlidersHorizontal, ShieldAlert, LogOut,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 
@@ -10,13 +10,15 @@ const ITEMS = [
   { to: "/tenders", label: "Marchés", icon: ClipboardList },
   { to: "/rejected", label: "Non retenus", icon: Archive },
   { to: "/buyers", label: "Acheteurs", icon: Building2 },
-  { to: "/settings", label: "Configuration", icon: SlidersHorizontal },
-  { to: "/users", label: "Utilisateurs", icon: Users },
+  { to: "/admin", label: "Utilisateurs & Système", icon: ShieldAlert, superadminOnly: true },
+  { to: "/settings", label: "Configuration", icon: SlidersHorizontal, superadminOnly: true },
 ];
 
 export default function Sidebar() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+
+  const visibleItems = ITEMS.filter((item) => !item.superadminOnly || user?.profil === "superadmin");
 
   return (
     <aside className="flex h-screen w-60 flex-col bg-ink-900 text-white">
@@ -25,7 +27,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="flex-1 space-y-1 px-3">
-        {ITEMS.map(({ to, label, icon: Icon, end }) => (
+        {visibleItems.map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}

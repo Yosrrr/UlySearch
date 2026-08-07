@@ -2,7 +2,11 @@ from datetime import datetime
 from typing import Any
 from pydantic import BaseModel
 
+from pydantic import BaseModel
 
+
+class TenderStatusUpdate(BaseModel):
+    statut: str  # "retenu" | "sans_suite"
 class TenderOut(BaseModel):
     id: str
     objet: str

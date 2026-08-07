@@ -17,7 +17,8 @@ from app.core.keywords import CATEGORIES
 from app.models.sotradies import Sotradies
 from app.services.scrapers.onmp_scraper import OnmpScraper
 from app.services.scrapers.appeloffres_scraper import AppeloffresScraper
-from app.services.keyword_classifier import score_all_categories, best_category
+from app.services.scoring_orchestrator import score_tender_full
+from app.services.keyword_classifier import best_category
 from app.services.buyer_matcher import match_buyer
 
 SCRAPE_CACHE_TTL = 25 * 60  # 25 min — légèrement sous le cycle de 30 min
@@ -38,6 +39,10 @@ def fetch_with_cache(scraper) -> list:
     return tenders
 
 def compute_hash(t) -> str:
+    """Identifie un marché par son contenu STABLE. date_limite et
+    budget_estime sont volontairement exclus : ce sont des champs qui
+    peuvent être mis à jour par la source (report de délai, précision
+    tardive du budget) sans que ce soit un nouveau marché."""
     parts = [
         t.source,
         t.reference or "",
@@ -45,8 +50,6 @@ def compute_hash(t) -> str:
         unidecode(t.acheteur or "").lower().strip(),
         unidecode(t.categorie or "").lower().strip(),
         str(t.date_publication),
-        str(t.date_limite),
-        str(t.budget_estime),
     ]
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
 
@@ -68,6 +71,7 @@ def run_pipeline(target_date: date | None = None) -> dict:
 
     scrapers = [OnmpScraper(), AppeloffresScraper()]
     db = SessionLocal()
+    
 
     total_nouveaux, total_doublons, total_hors_date, total_sans_date = 0, 0, 0, 0
     retenus, non_retenus = [], []
@@ -89,12 +93,26 @@ def run_pipeline(target_date: date | None = None) -> dict:
                 continue
             seen_this_run.add(tender_id)
 
-            if db.query(Sotradies).filter_by(id=tender_id).first():
+            existing = db.query(Sotradies).filter_by(id=tender_id).first()
+            if existing:
                 total_doublons += 1
+                # Le marché existe déjà : on ne touche jamais date_detection
+                # (date de première détection), mais on met à jour les champs
+                # qui peuvent légitimement évoluer d'une source à l'autre.
+                changed = False
+                if existing.date_limite != t.date_limite:
+                    existing.date_limite = t.date_limite
+                    changed = True
+                if existing.budget_estime != t.budget_estime:
+                    existing.budget_estime = t.budget_estime
+                    changed = True
+                if changed:
+                    existing.date_derniere_action = datetime.utcnow()
+                    print(f"[pipeline] Marché mis à jour (date/budget modifié) : {t.objet[:60]}")
                 continue
 
             total_nouveaux += 1
-            score_details = score_all_categories(t)
+            score_details = score_tender_full(t)
             categorie, score = best_category(score_details)
             commercial = CATEGORIES[categorie]["commercial"] if categorie else None
             acheteur_connu = match_buyer(t.acheteur)
