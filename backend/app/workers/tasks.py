@@ -15,7 +15,7 @@ def kickoff_daily_scan():
 
 @celery_app.task(name="tasks.run_daily_scan")
 def run_daily_scan():
-    """Scraping + scoring, puis alerte immédiate pour tout ce qui dépasse 80%."""
+    """Scraping + scoring, puis alerte immédiate pour tout ce qui dépasse 70% par défaut."""
     summary = run_pipeline()
     dispatch_new_tenders()
     return summary

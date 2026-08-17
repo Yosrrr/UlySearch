@@ -18,7 +18,7 @@ def is_weekend(d: date | None = None) -> bool:
 
 
 def dispatch_new_tenders(force: bool = False):
-    """Alerte instantanée pour tout marché au-dessus du seuil (>80%)."""
+    """Alerte instantanée pour tout marché au-dessus du seuil (>70% par défaut)."""
     if is_weekend():
         print("[notifier] Week-end : silence radio, aucun envoi.")
         return

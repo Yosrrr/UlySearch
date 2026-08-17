@@ -15,7 +15,7 @@ class Configuration(Base):
     score_decision_threshold = Column(Integer, default=50, nullable=False)
     # Score minimum pour qu'un marché soit "retenu" (pourcentage, 0-100)
     
-    score_instant_alert_threshold = Column(Integer, default=80, nullable=False)
+    score_instant_alert_threshold = Column(Integer, default=70, nullable=False)
     # Score pour déclencher une alerte instantanée (vs digest quotidien)
     
     # ===== Mots-clés et catégories (Layer 4, Tier 1) =====

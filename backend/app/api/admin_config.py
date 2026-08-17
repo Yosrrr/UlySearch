@@ -60,7 +60,7 @@ def get_or_create_config():
     if not config:
         config = Configuration(
             score_decision_threshold=50,
-            score_instant_alert_threshold=80,
+            score_instant_alert_threshold=70,
             categories={},
             exclusion_keywords=[],
             active_sources={},

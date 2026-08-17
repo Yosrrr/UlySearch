@@ -42,7 +42,7 @@ def init_default_configuration():
     # Créer la configuration par défaut
     default_config = Configuration(
         score_decision_threshold=50,
-        score_instant_alert_threshold=80,
+        score_instant_alert_threshold=70,
         categories=default_categories,
         exclusion_keywords=EXCLUSION_KEYWORDS,
         active_sources=default_sources,

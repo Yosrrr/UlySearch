@@ -189,7 +189,7 @@ def run_pipeline(target_date: date | None = None) -> dict:
     print(f"RETENUS ({len(retenus)}) — triés par score décroissant")
     print(f"{'='*90}")
     for score, cat, com, source, objet, acheteur_connu in retenus:
-        marqueur = " 🔴 ALERTE INSTANTANÉE" if score > 80 else ""
+        marqueur = " 🔴 ALERTE INSTANTANÉE" if score > settings.RELEVANCE_INSTANT_ALERT_THRESHOLD else ""
         badge = " ⭐ CLIENT CONNU" if acheteur_connu == "Oui" else ""
         print(f"[{score}% | {cat} | {com or 'NON ASSIGNÉ'} | {source}]{marqueur}{badge} {objet[:60]}")
 
@@ -200,7 +200,7 @@ def run_pipeline(target_date: date | None = None) -> dict:
         "hors_date": total_hors_date,
         "sans_date": total_sans_date,
         "retenus": len(retenus),
-        "alertes_instantanees": sum(1 for score, *_ in retenus if score > 80),
+        "alertes_instantanees": sum(1 for score, *_ in retenus if score > settings.RELEVANCE_INSTANT_ALERT_THRESHOLD),
         "acheteurs_connus": sum(1 for *_, ac in retenus if ac == "Oui"),
         "non_retenus": len(non_retenus),
     }

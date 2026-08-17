@@ -76,29 +76,7 @@ export default function DashboardPage() {
             </ul>
           )}
         </div>
-        <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5">
-  <h2 className="mb-4 font-display text-base font-semibold text-ink-900">
-    Marchés détectés par semaine
-  </h2>
-  <ResponsiveContainer width="100%" height={220}>
-    <LineChart data={dashboard.weekly_counts}>
-      <CartesianGrid strokeDasharray="3 3" stroke="#EEF1F4" />
-      <XAxis dataKey="semaine" tick={{ fontSize: 12, fill: "#5B6472" }} />
-      <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: "#5B6472" }} />
-      <Tooltip
-        contentStyle={{ borderRadius: 8, border: "1px solid #DDE2E8", fontSize: 13 }}
-      />
-      <Line
-        type="monotone"
-        dataKey="marches"
-        stroke="#E8873A"
-        strokeWidth={2}
-        dot={{ fill: "#E8873A", r: 3 }}
-        name="Marchés détectés"
-      />
-    </LineChart>
-  </ResponsiveContainer>
-</div>
+        
 
         <div className="space-y-6">
           <div className="rounded-xl border border-slate-200 bg-white p-5">
@@ -135,8 +113,33 @@ export default function DashboardPage() {
                 : "—"}
             </p>
           </div>
+          
         </div>
+        
       </div>
+      <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5">
+  <h2 className="mb-4 font-display text-base font-semibold text-ink-900">
+    Marchés détectés par semaine
+  </h2>
+  <ResponsiveContainer width="100%" height={220}>
+    <LineChart data={dashboard.weekly_counts}>
+      <CartesianGrid strokeDasharray="3 3" stroke="#EEF1F4" />
+      <XAxis dataKey="semaine" tick={{ fontSize: 12, fill: "#5B6472" }} />
+      <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: "#5B6472" }} />
+      <Tooltip
+        contentStyle={{ borderRadius: 8, border: "1px solid #DDE2E8", fontSize: 13 }}
+      />
+      <Line
+        type="monotone"
+        dataKey="marches"
+        stroke="#E8873A"
+        strokeWidth={2}
+        dot={{ fill: "#E8873A", r: 3 }}
+        name="Marchés détectés"
+      />
+    </LineChart>
+  </ResponsiveContainer>
+</div>
     </div>
   );
 }

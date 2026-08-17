@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     
     DIRECTION_EMAIL: str = ""
 
-    RELEVANCE_INSTANT_ALERT_THRESHOLD: int = 80
+    RELEVANCE_INSTANT_ALERT_THRESHOLD: int = 70
     RELEVANCE_RETAIN_THRESHOLD: int = 50
 
     @field_validator("DATABASE_URL", mode="before")
