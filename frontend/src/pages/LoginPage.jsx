@@ -18,8 +18,9 @@ export default function LoginPage() {
     try {
       await signIn(email, password);
       navigate("/");
-    } catch {
-      setError("Connexion impossible — vérifiez l'adresse e-mail et le mot de passe.");
+    } catch (err) {
+      const backendMessage = err.response?.data?.detail;
+      setError(backendMessage || "Connexion impossible — vérifiez l'adresse e-mail et le mot de passe.");
     } finally {
       setLoading(false);
     }

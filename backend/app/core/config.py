@@ -18,14 +18,22 @@ class Settings(BaseSettings):
 
     CACHE_REDIS_URL: str = "redis://localhost:6379/2"
     
+    ADMIN_ALERT_EMAIL: str = "yosrsbai8@gmail.com"
+    
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SENDER_EMAIL: str = "veille-ao@sotradies.tn"
 
+    OLLAMA_MODEL: str = "qwen2.5:3b-instruct"
+    OLLAMA_HOST: str = "http://localhost:11434"
+
     TUNEPS_USERNAME: str = ""
     TUNEPS_PASSWORD: str = ""
+    
+    APPELOFFRES_USERNAME: str = ""
+    APPELOFFRES_PASSWORD: str = ""
     
     GEMINI_API_KEY: str = ""
     

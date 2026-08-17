@@ -1,5 +1,5 @@
 """Utilisateurs du dashboard (5 comptes prévus — direction + commerciaux)."""
-from sqlalchemy import Column, Integer, String, Boolean
+from sqlalchemy import Column, Integer, String, Boolean, DateTime
 from app.core.database import Base
 
 
@@ -12,3 +12,5 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     profil = Column(String(20), nullable=False, default="user")  # "admin" | "user" | "superadmin"
     actif = Column(Boolean, nullable=False, default=True)
+    failed_login_attempts = Column(Integer, nullable=False, default=0)
+    locked_until = Column(DateTime, nullable=True)

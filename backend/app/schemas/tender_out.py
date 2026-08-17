@@ -24,6 +24,9 @@ class TenderOut(BaseModel):
     date_detection: datetime
     source: str
     lien: str
+    description_detaillee: str | None
+    budget_detecte: float | None
+    duree_execution: str | None
 
     class Config:
         from_attributes = True
@@ -64,4 +67,7 @@ def to_tender_out(t) -> TenderOut:
         date_detection=t.date_detection,
         source=t.source,
         lien=t.lien,
+        description_detaillee=t.description_detaillee,
+        budget_detecte=float(t.budget_detecte) if t.budget_detecte else None,
+        duree_execution=t.duree_execution,
     )

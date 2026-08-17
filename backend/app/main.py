@@ -8,6 +8,7 @@ from app.api.buyers import router as buyers_router
 from app.core.config import settings
 from app.core.database import init_db
 from app.core.init_config import init_default_configuration
+from app.api.audit import router as audit_router
 
 # Importer tous les modèles pour les enregistrer dans Base.metadata
 from app.models import user, sotradies, sent_log, audit_log, known_buyer, system_action_log, configuration
@@ -35,6 +36,8 @@ app.include_router(admin_system.router, prefix="/api")
 app.include_router(admin_users.router, prefix="/api")
 app.include_router(admin_config.router, prefix="/api")
 app.include_router(buyers_router, prefix="/api")
+
+app.include_router(audit_router, prefix="/api")
 
 
 @app.get("/health")

@@ -1,5 +1,4 @@
 from celery.schedules import crontab
-
 from app.core.celery_app import celery_app
 
 celery_app.conf.beat_schedule = {
@@ -14,5 +13,9 @@ celery_app.conf.beat_schedule = {
     "digest-quotidien-8h": {
         "task": "tasks.send_digest",
         "schedule": crontab(minute=0, hour=8, day_of_week="1-5"),
+    },
+    "rappels-j3-j1-8h30": {
+        "task": "tasks.send_reminders",
+        "schedule": crontab(minute=30, hour=8, day_of_week="1-5"),
     },
 }

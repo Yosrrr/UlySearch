@@ -17,11 +17,15 @@ def _require_process_control():
 
 
 def _log_action(user: dict, action: str):
-    db = SessionLocal()
-    db.add(SystemActionLog(utilisateur_email=user["sub"], action=action))
-    db.commit()
-    db.close()
-
+    """La journalisation ne doit jamais faire échouer l'action elle-même
+    (démarrer/arrêter un process a réussi même si son log d'audit rate)."""
+    try:
+        db = SessionLocal()
+        db.add(SystemActionLog(utilisateur_email=user["sub"], action=action))
+        db.commit()
+        db.close()
+    except Exception as e:
+        print(f"[admin_system] Échec de la journalisation (action déjà exécutée) : {e}")
 
 @router.get("/status")
 def status(user=Depends(require_superadmin)):

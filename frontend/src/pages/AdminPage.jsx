@@ -10,6 +10,11 @@ import { useAuth } from "../context/AuthContext";
 import { getSystemStatus, startWorker, stopWorker, startBeat, stopBeat } from "../api/adminSystem";
 import { getUsers, createUser, updateUser, deleteUser } from "../api/adminUsers";
 
+import { ScrollText } from "lucide-react";
+import { getAuditLog } from "../api/audit";
+import ExportButtons from "../components/ui/ExportButtons";
+import { exportAuditLog } from "../api/audit";
+
 export default function AdminPage() {
   return (
     <div className="mx-auto max-w-6xl px-6 py-8">
@@ -23,6 +28,9 @@ export default function AdminPage() {
       <SystemControlSection />
       <div className="mt-10">
         <UserManagementSection />
+      </div>
+      <div className="mt-10">
+        <AuditLogSection />
       </div>
     </div>
   );
@@ -112,6 +120,7 @@ function UserManagementSection() {
 
   const toggleActiveMutation = useMutation({ mutationFn: ({ id, payload }) => updateUser(id, payload), onSuccess: invalidate });
 
+  
 
 
   function handleDelete(u) {
@@ -192,6 +201,7 @@ function UserManagementSection() {
   );
 }
 
+
 function AdminUserForm({ mode, initial, onSave, saving, errorMessage }) {
   const [email, setEmail] = useState(initial?.email || "");
   const [nom, setNom] = useState(initial?.nom || "");
@@ -239,5 +249,107 @@ function AdminUserForm({ mode, initial, onSave, saving, errorMessage }) {
         {saving ? "Enregistrement..." : mode === "create" ? "Créer le compte" : "Enregistrer"}
       </button>
     </form>
+  );
+}
+const ACTION_LABELS = {
+  connexion: { label: "Connexion", cls: "bg-slate-100 text-slate-600" },
+  consultation: { label: "Consultation", cls: "bg-ink-800/10 text-ink-800" },
+  changement_statut: { label: "Changement de statut", cls: "bg-amber-500/15 text-amber-600" },
+};
+
+function AuditLogSection() {
+  const [search, setSearch] = useState("");
+  const [actionFilter, setActionFilter] = useState("Toutes");
+
+  const { data: logs, isLoading } = useQuery({
+    queryKey: ["audit-log", search, actionFilter],
+    queryFn: () => getAuditLog({ utilisateur_email: search || undefined, action: actionFilter }),
+  });
+  const [exporting, setExporting] = useState(false);
+
+async function handleExport(format) {
+  setExporting(true);
+  try {
+    await exportAuditLog({ utilisateur_email: search || undefined, action: actionFilter }, format);
+  } catch (err) {
+    console.error("Export échoué", err);
+  } finally {
+    setExporting(false);
+  }
+}
+
+  return (
+    <section>
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+        <ScrollText size={18} className="text-slate-500" />
+        <h2 className="font-display text-base font-semibold text-ink-900">Journal d'audit</h2>
+        </div>
+       <ExportButtons onExport={handleExport} exporting={exporting} />
+    </div>
+      <div className="mb-3 flex items-center gap-2">
+        <ScrollText size={18} className="text-slate-500" />
+        <h2 className="font-display text-base font-semibold text-ink-900">Journal d'audit</h2>
+      </div>
+
+      <div className="mb-4 flex flex-wrap gap-3">
+        <input
+          type="text"
+          placeholder="Filtrer par utilisateur..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="min-w-[220px] rounded-lg border border-slate-200 px-3 py-2 text-sm"
+        />
+        <select
+          value={actionFilter}
+          onChange={(e) => setActionFilter(e.target.value)}
+          className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+        >
+          <option value="Toutes">Toutes les actions</option>
+          <option value="connexion">Connexions</option>
+          <option value="consultation">Consultations</option>
+          <option value="changement_statut">Changements de statut</option>
+        </select>
+      </div>
+
+      {isLoading && <Spinner />}
+
+      {logs && (
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3">Utilisateur</th>
+                <th className="px-4 py-3">Action</th>
+                <th className="px-4 py-3">Détail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {logs.map((log) => {
+                const info = ACTION_LABELS[log.action] ?? { label: log.action, cls: "bg-slate-100 text-slate-600" };
+                return (
+                  <tr key={log.id} className="border-t border-slate-100">
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-500">
+                      {new Date(log.date_action).toLocaleString("fr-FR")}
+                    </td>
+                    <td className="px-4 py-3 text-ink-900">{log.utilisateur_email}</td>
+                    <td className="px-4 py-3">
+                      <span className={`rounded-full px-2 py-1 text-xs font-medium ${info.cls}`}>{info.label}</span>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {log.tender_objet || log.detail || "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {logs.length === 0 && (
+            <p className="py-6 text-center text-sm text-slate-400">Aucune entrée pour ce filtre.</p>
+          )}
+        </div>
+      )}
+    </section>
   );
 }

@@ -1,5 +1,6 @@
 // src/api/tenders.js
 import apiClient from "./client";
+import { downloadBlob } from "../utils/download";
 
 export async function getTenders(filters = {}) {
   const { data } = await apiClient.get("/tenders", { params: filters });
@@ -18,4 +19,11 @@ export async function getTender(id) {
 export async function getRejectedTenders() {
   const { data } = await apiClient.get("/tenders/rejected");
   return data;
+}
+export async function exportTenders(filters, format) {
+  const response = await apiClient.get("/tenders/export", {
+    params: { ...filters, format },
+    responseType: "blob",
+  });
+  downloadBlob(response.data, `marches-sotradies.${format}`);
 }

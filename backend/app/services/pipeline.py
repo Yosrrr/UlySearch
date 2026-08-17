@@ -8,7 +8,9 @@ tâche Celery (app/workers/tasks.py).
 """
 import hashlib
 from datetime import date, datetime, timedelta
-
+from app.services.mailer import send_email
+from app.services.detail_extractor import extract_detail
+from app.core.config import settings
 from unidecode import unidecode
 from app.core.cache import cache_get, cache_set, cache_delete_pattern
 from app.schemas.sotradies import SotradiesRaw
@@ -63,6 +65,23 @@ def filter_today_only(tenders: list, target_date: date) -> tuple[list, int]:
         if t.date_publication.date() == target_date:
             kept.append(t)
     return kept, sans_date
+def _alert_scraper_failure(source_name: str) -> None:
+    """0 résultat brut d'un scraper est anormal — alerte immédiate,
+    pour ne jamais découvrir un site cassé en silence."""
+    print(f"[pipeline] ⚠️ ALERTE : {source_name} n'a retourné aucun marché — site possiblement cassé.")
+    try:
+        send_email(
+            settings.ADMIN_ALERT_EMAIL,
+            f"⚠️ Scraper {source_name} : 0 résultat — vérification nécessaire",
+            f"""<p>Le scraper <b>{source_name}</b> n'a retourné <b>aucun marché</b> lors du dernier passage.</p>
+                <p>Causes possibles : structure du site modifiée, site temporairement inaccessible,
+                blocage IP/captcha, identifiants expirés.</p>
+                <p>Vérifiez manuellement le site, et si besoin le dossier <code>debug_{source_name}/</code>
+                (capture d'écran + HTML brut sauvegardés automatiquement en cas d'échec).</p>""",
+        )
+    except Exception as e:
+        # Une alerte qui échoue ne doit jamais faire planter tout le pipeline
+        print(f"[pipeline] Échec de l'envoi de l'alerte technique : {e}")
 
 
 def run_pipeline(target_date: date | None = None) -> dict:
@@ -80,6 +99,14 @@ def run_pipeline(target_date: date | None = None) -> dict:
     for scraper in scrapers:
         print(f"[pipeline] Source : {scraper.source_name}")
         all_tenders = fetch_with_cache(scraper)
+
+        # ⚠️ 0 résultat brut = signal fort d'un site cassé (sélecteur HTML
+        # obsolète, connexion refusée...), pas juste "aucun marché aujourd'hui".
+        # On alerte avant même le filtre par date, qui lui peut légitimement
+        # donner 0 certains jours calmes.
+        if len(all_tenders) == 0:
+            _alert_scraper_failure(scraper.source_name)
+
         tenders, sans_date = filter_today_only(all_tenders, target_date)
         total_hors_date += (len(all_tenders) - len(tenders) - sans_date)
         total_sans_date += sans_date
@@ -116,6 +143,9 @@ def run_pipeline(target_date: date | None = None) -> dict:
             categorie, score = best_category(score_details)
             commercial = CATEGORIES[categorie]["commercial"] if categorie else None
             acheteur_connu = match_buyer(t.acheteur)
+            detail_info = {"description_detaillee": None, "budget_detecte": None, "duree_execution": None}
+            if score >= settings.RELEVANCE_RETAIN_THRESHOLD:
+                detail_info = extract_detail(t.source, t.lien)
 
             record = Sotradies(
                 id=tender_id,
@@ -132,6 +162,17 @@ def run_pipeline(target_date: date | None = None) -> dict:
                 commercial_assigne=commercial,
                 score_details=score_details,
                 acheteur_connu=acheteur_connu,
+                description_detaillee=detail_info["description_detaillee"],
+                budget_detecte=detail_info["budget_detecte"],
+                duree_execution=detail_info["duree_execution"],
+                montant_cautionnement=detail_info.get("montant_cautionnement"),
+                type_marche=detail_info.get("type_marche"),
+                procedure_passation=detail_info.get("procedure_passation"),
+                region_execution=detail_info.get("region_execution"),
+                date_debut_execution=detail_info.get("date_debut_execution"),
+                date_ouverture_offres=detail_info.get("date_ouverture_offres"),
+                lieu_ouverture_offres=detail_info.get("lieu_ouverture_offres"),
+                caractere_prix=detail_info.get("caractere_prix"),
             )
             db.add(record)
 

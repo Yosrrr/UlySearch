@@ -45,17 +45,34 @@ export default function TenderDetailPage() {
   if (isError || !tender) {
     return (
       <PageWrapper>
-        <Alert variant="error">Ce marché n'a pas pu être chargé.</Alert>
+        <Alert variant="error">Ce marche n'a pas pu etre charge.</Alert>
       </PageWrapper>
     );
   }
 
   const { hasScore, score } = extractScoreInfo(tender.score_details);
 
+  const hasComplementaryInfo =
+    tender.type_marche ||
+    tender.procedure_passation ||
+    tender.region_execution ||
+    tender.date_debut_execution ||
+    tender.date_ouverture_offres ||
+    tender.lieu_ouverture_offres ||
+    tender.caractere_prix;
+
+  const isPaywallMessage = Boolean(
+    tender.description_detaillee &&
+    tender.description_detaillee.startsWith("Contenu complet non accessible")
+  );
+  const descriptionClass = isPaywallMessage
+    ? "whitespace-pre-line rounded-lg p-4 text-sm bg-amber-500/10 text-amber-700"
+    : "whitespace-pre-line rounded-lg p-4 text-sm bg-slate-50 text-slate-700";
+
   return (
     <PageWrapper>
       <Link to="/tenders" className="mb-4 inline-flex items-center gap-1 text-sm text-slate-600 hover:text-ink-900">
-        <ArrowLeft size={14} /> Retour à la liste
+        <ArrowLeft size={14} /> Retour a la liste
       </Link>
 
       <div className="rounded-xl border border-slate-200 bg-white p-6">
@@ -69,7 +86,7 @@ export default function TenderDetailPage() {
             {hasScore ? (
               <ScoreBadge score={score} />
             ) : (
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-400">Score à venir</span>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-400">Score a venir</span>
             )}
             <TenderStatusBadge statut={tender.statut} />
           </div>
@@ -77,16 +94,16 @@ export default function TenderDetailPage() {
 
         <dl className="mt-6 grid grid-cols-2 gap-4 border-t border-slate-100 pt-6 text-sm sm:grid-cols-3">
           <Field label="Source" value={tender.source} />
-          <Field label="Catégorie" value={tender.categorie} />
+          <Field label="Categorie" value={tender.categorie} />
           <Field label="Date de publication" value={formatDate(tender.date_publication)} />
           <Field label="Date limite" value={formatDate(tender.date_limite)} />
-          <Field label="Commercial assigné" value={tender.commercial_assigne} />
+          <Field label="Commercial assigne" value={tender.commercial_assigne} />
           <Field label="Acheteur connu" value={tender.acheteur_connu ? "Oui" : "Non"} />
         </dl>
 
         {tender.score_details && (
           <div className="mt-6 border-t border-slate-100 pt-6">
-            <p className="mb-2 text-sm font-medium text-ink-900">Détail du score par catégorie</p>
+            <p className="mb-2 text-sm font-medium text-ink-900">Detail du score par categorie</p>
             <div className="space-y-2">
               {Object.entries(tender.score_details).map(([cat, val]) => {
                 const catScore = typeof val === "object" ? val?.score : val;
@@ -97,7 +114,7 @@ export default function TenderDetailPage() {
                       {categoryLabel(cat)} : {catScore ?? "-"}
                     </span>
                     {matched && matched.length > 0 && (
-                      <span className="text-slate-500">mots-clés : {matched.join(", ")}</span>
+                      <span className="text-slate-500">mots-cles : {matched.join(", ")}</span>
                     )}
                   </div>
                 );
@@ -130,17 +147,42 @@ export default function TenderDetailPage() {
         </div>
         {statusMutation.isError && (
           <div className="mt-3">
-            <Alert variant="error">Le changement de statut a échoué — réessayez.</Alert>
+            <Alert variant="error">Le changement de statut a echoue - reessayez.</Alert>
           </div>
         )}
 
-<div className="mt-6 border-t border-slate-100 pt-6">
-          <a
-            href={tender.lien}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-700 hover:underline"
-          >
+        {(tender.budget_detecte || tender.duree_execution || tender.montant_cautionnement) && (
+          <dl className="mt-6 grid grid-cols-2 gap-4 border-t border-slate-100 pt-6 text-sm sm:grid-cols-3">
+            <Field label="Budget detecte" value={tender.budget_detecte ? `${tender.budget_detecte.toLocaleString("fr-TN")} DT` : null} />
+            <Field label="Duree d'execution" value={tender.duree_execution} />
+            <Field label="Cautionnement provisoire" value={tender.montant_cautionnement ? `${tender.montant_cautionnement.toLocaleString("fr-TN")} DT` : null} />
+          </dl>
+        )}
+
+        {hasComplementaryInfo && (
+          <div className="mt-6 border-t border-slate-100 pt-6">
+            <p className="mb-3 text-sm font-medium text-ink-900">Informations complementaires</p>
+            <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
+              <Field label="Type de marche" value={tender.type_marche} />
+              <Field label="Procedure de passation" value={tender.procedure_passation} />
+              <Field label="Region d'execution" value={tender.region_execution} />
+              <Field label="Date de debut d'execution" value={formatDate(tender.date_debut_execution)} />
+              <Field label="Date d'ouverture des offres" value={formatDate(tender.date_ouverture_offres)} />
+              <Field label="Lieu d'ouverture des offres" value={tender.lieu_ouverture_offres} />
+              <Field label="Caractere des prix" value={tender.caractere_prix} />
+            </dl>
+          </div>
+        )}
+
+        {tender.description_detaillee && (
+          <div className="mt-6 border-t border-slate-100 pt-6">
+            <p className="mb-3 text-sm font-medium text-ink-900">Description</p>
+            <p className={descriptionClass}>{tender.description_detaillee}</p>
+          </div>
+        )}
+
+        <div className="mt-6 border-t border-slate-100 pt-6">
+          <a href={tender.lien} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-700 hover:underline">
             <ExternalLink size={14} /> Ouvrir l'annonce source
           </a>
         </div>
@@ -153,7 +195,7 @@ function Field({ label, value }) {
   return (
     <div>
       <dt className="text-xs uppercase tracking-wide text-slate-400">{label}</dt>
-      <dd className="mt-0.5 font-medium text-ink-900">{value || "—"}</dd>
+      <dd className="mt-0.5 font-medium text-ink-900">{value || "-"}</dd>
     </div>
   );
 }

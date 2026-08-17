@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import Optional, Dict, List, Any
 from datetime import datetime
 
+
 from app.core.database import SessionLocal
 from app.api.deps import require_superadmin
 from app.models.configuration import Configuration
