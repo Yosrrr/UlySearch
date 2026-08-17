@@ -28,6 +28,9 @@ class Settings(BaseSettings):
 
     OLLAMA_MODEL: str = "qwen2.5:3b-instruct"
     OLLAMA_HOST: str = "http://localhost:11434"
+    
+    TESSERACT_CMD: str = ""   # chemin vers tesseract.exe si absent du PATH (souvent nécessaire sous Windows)
+    POPPLER_PATH: str = ""    # dossier bin/ de Poppler si absent du PATH (requis par pdf2image pour les PDF scannés)
 
     TUNEPS_USERNAME: str = ""
     TUNEPS_PASSWORD: str = ""

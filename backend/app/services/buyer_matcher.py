@@ -86,3 +86,47 @@ def match_buyer(acheteur_scrape: str) -> str | None:
             best_score, best_kb = global_score, kb
 
     return best_kb.client_sotradies if best_kb else None
+def find_matching_buyer(acheteur_scrape: str, known_buyers: list[KnownBuyer] | None = None) -> KnownBuyer | None:
+    """Retourne l'objet KnownBuyer correspondant si un rapprochement flou
+    fiable est trouvé, sinon None. Factorisée pour être réutilisée à la fois
+    par le pipeline (match_buyer) et par l'import OCR (buyer_ocr_importer)."""
+    if known_buyers is None:
+        db = SessionLocal()
+        known_buyers = db.query(KnownBuyer).all()
+        db.close()
+
+    if not known_buyers:
+        return None
+
+    candidates = []
+    for kb in known_buyers:
+        candidates.append((kb.nom_acheteur, kb))
+        if kb.variantes:
+            for variante in kb.variantes.split(";"):
+                candidates.append((variante.strip(), kb))
+
+    target = _normalize(acheteur_scrape)
+    if not target:
+        return None
+
+    best_score, best_kb = 0, None
+    for candidate_name, kb in candidates:
+        global_score = fuzz.token_sort_ratio(target, _normalize(candidate_name))
+        if global_score < GLOBAL_MATCH_THRESHOLD:
+            continue
+
+        distinctive_score = _distinctive_similarity(acheteur_scrape, candidate_name)
+        if distinctive_score < DISTINCTIVE_WORD_THRESHOLD:
+            continue
+
+        if global_score > best_score:
+            best_score, best_kb = global_score, kb
+
+    return best_kb
+
+
+def match_buyer(acheteur_scrape: str) -> str | None:
+    """Utilisée par le pipeline (Layer 5) : comportement inchangé,
+    ne retourne que le statut client."""
+    best_kb = find_matching_buyer(acheteur_scrape)
+    return best_kb.client_sotradies if best_kb else None

@@ -9,6 +9,7 @@ import Spinner from "../components/ui/Spinner";
 import Alert from "../components/ui/Alert";
 import { useBuyers } from "../hooks/useBuyers";
 import { updateBuyer, createBuyer } from "../api/buyers";
+import BuyerScanImportZone from "../components/buyer/BuyerScanImportZone";
 
 export default function BuyersPage() {
   const { data: buyers, isLoading } = useBuyers();
@@ -57,9 +58,11 @@ export default function BuyersPage() {
         </button>
       }
     >
-      <div className="mb-6">
-        <BuyerImportZone onImported={() => queryClient.invalidateQueries({ queryKey: ["buyers"] })} />
-      </div>
+      <div className="mb-6 grid gap-4 sm:grid-cols-2">
+  <BuyerImportZone onImported={() => queryClient.invalidateQueries({ queryKey: ["buyers"] })} />
+  <BuyerScanImportZone onImported={() => queryClient.invalidateQueries({ queryKey: ["buyers"] })} />
+</div>
+      
 
       <input
         type="text"

@@ -5,6 +5,7 @@ from app.models.known_buyer import KnownBuyer
 from app.schemas.buyer import BuyerOut, BuyerCreate, BuyerUpdate
 from app.services.buyer_importer import import_known_buyers
 from app.api.deps import get_current_user
+from app.services.buyer_ocr_importer import import_buyers_from_scan
 
 router = APIRouter(prefix="/buyers", tags=["buyers"])
 
@@ -16,6 +17,19 @@ def list_buyers(user=Depends(get_current_user)):
     db.close()
     return buyers
 
+@router.post("/import-scan")
+async def import_buyers_scan(file: UploadFile = File(...), user=Depends(get_current_user)):
+    allowed = (".pdf", ".jpg", ".jpeg", ".png")
+    if not file.filename.lower().endswith(allowed):
+        raise HTTPException(status_code=400, detail="Le fichier doit être un PDF, JPG ou PNG.")
+
+    contents = await file.read()
+    try:
+        result = import_buyers_from_scan(contents, file.filename)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Échec de l'analyse du document : {exc}")
+
+    return result
 
 @router.post("", response_model=BuyerOut)
 def create_buyer(payload: BuyerCreate, user=Depends(get_current_user)):
