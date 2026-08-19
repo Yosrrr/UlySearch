@@ -36,4 +36,5 @@ dist/
 *.md
 *.txt
 backend/dump.rdb
+backend/scripts/
 
