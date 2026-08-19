@@ -44,7 +44,7 @@ export default function TenderFilters({ value, onChange }) {
         className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
       >
         <option value="">Score minimum</option>
-        <option value="80">≥ 80% (priorité)</option>
+        <option value="70">≥ 70% (priorité)</option>
         <option value="50">≥ 50%</option>
       </select>
     </div>

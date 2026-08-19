@@ -6,22 +6,25 @@ Pipeline complet : scraping -> filtre par date -> déduplication stricte
 Réutilisable à la fois en CLI (scripts/run_pipeline_all.py) et comme
 tâche Celery (app/workers/tasks.py).
 """
+from app.services.config_service import get_or_create_config
 import hashlib
 from datetime import date, datetime, timedelta
 from app.services.mailer import send_email
-from app.services.detail_extractor import extract_detail
+
 from app.core.config import settings
 from unidecode import unidecode
 from app.core.cache import cache_get, cache_set, cache_delete_pattern
 from app.schemas.sotradies import SotradiesRaw
 from app.core.database import SessionLocal
-from app.core.keywords import CATEGORIES
+from app.core.keywords import CATEGORIES,  EXCLUSION_KEYWORDS
 from app.models.sotradies import Sotradies
 from app.services.scrapers.onmp_scraper import OnmpScraper
 from app.services.scrapers.appeloffres_scraper import AppeloffresScraper
-from app.services.scoring_orchestrator import score_tender_full
-from app.services.keyword_classifier import best_category
 from app.services.buyer_matcher import match_buyer
+
+from app.services.detail_fetcher import fetch_detail_text
+from app.services.raw_dump import dump_tender_to_txt, RAW_DUMP_DIR
+from app.services.ai_filter_and_extract import filter_and_extract, _EMPTY_RESULT as _EMPTY_RESULT_FILTER
 
 SCRAPE_CACHE_TTL = 25 * 60  # 25 min — légèrement sous le cycle de 30 min
 
@@ -85,7 +88,7 @@ def _alert_scraper_failure(source_name: str) -> None:
 
 
 def run_pipeline(target_date: date | None = None) -> dict:
-    target_date = target_date or (datetime.now().date() - timedelta(days=1))
+    target_date = target_date or datetime.now().date()
     print(f"[pipeline] Date ciblée : {target_date.isoformat()}")
 
     scrapers = [OnmpScraper(), AppeloffresScraper()]
@@ -95,6 +98,7 @@ def run_pipeline(target_date: date | None = None) -> dict:
     total_nouveaux, total_doublons, total_hors_date, total_sans_date = 0, 0, 0, 0
     retenus, non_retenus = [], []
     seen_this_run: set[str] = set()
+    seuil_retention = get_or_create_config().score_decision_threshold  # ⬅️ lu depuis la config admin
 
     for scraper in scrapers:
         print(f"[pipeline] Source : {scraper.source_name}")
@@ -139,13 +143,45 @@ def run_pipeline(target_date: date | None = None) -> dict:
                 continue
 
             total_nouveaux += 1
-            score_details = score_tender_full(t)
-            categorie, score = best_category(score_details)
+
+            # Filtre gratuit avant tout appel IA : une exclusion évidente
+            # tranche sans avoir besoin de solliciter Ollama.
+            text_check = unidecode(t.objet or "").lower()
+            if any(unidecode(kw).lower() in text_check for kw in EXCLUSION_KEYWORDS):
+                categorie, score = None, 0
+                ai_result = dict(_EMPTY_RESULT_FILTER)
+                ai_result["raison"] = "Exclu par mot-clé, avant appel IA"
+            else:
+                detail_text = fetch_detail_text(t.source, t.lien)
+                dump_path = dump_tender_to_txt(tender_id, t, detail_text)
+                ai_result = filter_and_extract(dump_path.read_text(encoding="utf-8"))
+                categorie = ai_result["categorie"] if ai_result["pertinent"] else None
+                score = ai_result["score"] if ai_result["pertinent"] else 0
+
+            score_details = {cat: {"score": 0, "mots_cles_matches": [], "methode": "ia_directe"} for cat in CATEGORIES}
+            if categorie:
+                score_details[categorie] = {
+                    "score": score,
+                    "mots_cles_matches": [],
+                    "methode": "ia_directe",
+                    "raison_ia": ai_result.get("raison", ""),
+                }
+
             commercial = CATEGORIES[categorie]["commercial"] if categorie else None
             acheteur_connu = match_buyer(t.acheteur)
-            detail_info = {"description_detaillee": None, "budget_detecte": None, "duree_execution": None}
-            if score >= settings.RELEVANCE_RETAIN_THRESHOLD:
-                detail_info = extract_detail(t.source, t.lien)
+            detail_info = {
+                "description_detaillee": ai_result.get("description_detaillee"),
+                "budget_detecte": ai_result.get("budget_detecte"),
+                "duree_execution": ai_result.get("duree_execution"),
+                "montant_cautionnement": ai_result.get("montant_cautionnement"),
+                "type_marche": ai_result.get("type_marche"),
+                "procedure_passation": ai_result.get("procedure_passation"),
+                "region_execution": ai_result.get("region_execution"),
+                "date_debut_execution": ai_result.get("date_debut_execution"),
+                "date_ouverture_offres": ai_result.get("date_ouverture_offres"),
+                "lieu_ouverture_offres": ai_result.get("lieu_ouverture_offres"),
+                "caractere_prix": ai_result.get("caractere_prix"),
+            }
 
             record = Sotradies(
                 id=tender_id,

@@ -33,6 +33,7 @@ def call_local_llm_json(system_prompt: str, user_prompt: str) -> dict | None:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
+            format="json",   
             options={"temperature": 0},
         )
         raw_text = response["message"]["content"].strip()

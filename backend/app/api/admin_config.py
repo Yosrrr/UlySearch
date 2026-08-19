@@ -8,6 +8,7 @@ from datetime import datetime
 from app.core.database import SessionLocal
 from app.api.deps import require_superadmin
 from app.models.configuration import Configuration
+from app.services.config_service import get_or_create_config
 
 router = APIRouter(prefix="/admin/config", tags=["admin-config"])
 
@@ -52,25 +53,6 @@ class ConfigurationResponse(BaseModel):
 
 
 # ===== Helper functions =====
-
-def get_or_create_config():
-    """Récupère la configuration singleton, ou la crée avec les valeurs par défaut."""
-    db = SessionLocal()
-    config = db.query(Configuration).first()
-    if not config:
-        config = Configuration(
-            score_decision_threshold=50,
-            score_instant_alert_threshold=70,
-            categories={},
-            exclusion_keywords=[],
-            active_sources={},
-            assignment_rules={}
-        )
-        db.add(config)
-        db.commit()
-        db.refresh(config)
-    db.close()
-    return config
 
 
 # ===== Endpoints =====

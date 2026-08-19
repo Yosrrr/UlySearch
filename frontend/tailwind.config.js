@@ -21,7 +21,7 @@ export default {
           600: "#5B6472",
         },
         amber: {
-          500: "#E8873A", // accent alerte instantanée (score > 80%)
+          500: "#E8873A", // accent alerte instantanée (score > 70%)
           600: "#C96F27",
         },
         teal: {

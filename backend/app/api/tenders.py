@@ -151,3 +151,9 @@ def update_tender_status(tender_id: str, payload: TenderStatusUpdate, user=Depen
     result = to_tender_out(t)
     db.close()
     return result
+@router.get("/config/thresholds")
+def get_thresholds(user=Depends(get_current_user)):
+    return {
+        "instant_alert_threshold": settings.RELEVANCE_INSTANT_ALERT_THRESHOLD,
+        "retain_threshold": settings.RELEVANCE_RETAIN_THRESHOLD,
+    }

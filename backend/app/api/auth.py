@@ -72,3 +72,16 @@ def login(payload: LoginRequest):
         "access_token": token,
         "user": {"email": user.email, "nom": user.nom, "profil": user.profil},
     }
+    
+@router.get("/me")
+def get_current_user_info(user: dict = Depends(get_current_user)):
+    db = SessionLocal()
+    db_user = db.query(User).filter_by(email=user["sub"]).first()
+    db.close()
+
+    if not db_user or not db_user.actif:
+        raise HTTPException(status_code=401, detail="Session invalide")
+
+    return {
+        "user": {"email": db_user.email, "nom": db_user.nom, "profil": db_user.profil},
+    }

@@ -1,5 +1,6 @@
 from datetime import datetime, date, timedelta
 from jinja2 import Environment, FileSystemLoader
+from jinja2 import select_autoescape
 
 from app.core.config import settings
 from app.core.commercials import COMMERCIAL_EMAILS
@@ -7,9 +8,13 @@ from app.core.database import SessionLocal
 from app.models.sotradies import Sotradies
 from app.models.sent_log import SentLog
 from app.services.mailer import send_email
+from app.services.config_service import get_or_create_config
 
 
-env = Environment(loader=FileSystemLoader("app/templates"))
+env = Environment(
+    loader=FileSystemLoader("app/templates"),
+    autoescape=select_autoescape(["html"]),
+)
 
 
 def is_weekend(d: date | None = None) -> bool:
@@ -18,10 +23,11 @@ def is_weekend(d: date | None = None) -> bool:
 
 
 def dispatch_new_tenders(force: bool = False):
-    """Alerte instantanée pour tout marché au-dessus du seuil (>70% par défaut)."""
     if is_weekend():
         print("[notifier] Week-end : silence radio, aucun envoi.")
         return
+
+    seuil = get_or_create_config().score_instant_alert_threshold  # ⬅️ lu depuis la config admin, plus depuis .env
 
     db = SessionLocal()
     tenders = db.query(Sotradies).filter(Sotradies.statut == "nouveau").all()
@@ -32,7 +38,7 @@ def dispatch_new_tenders(force: bool = False):
             continue
 
         best_score = max((v["score"] for v in t.score_details.values()), default=0)
-        if best_score <= settings.RELEVANCE_INSTANT_ALERT_THRESHOLD:
+        if best_score <= seuil:  # ⬅️ était settings.RELEVANCE_INSTANT_ALERT_THRESHOLD
             continue
 
         if db.query(SentLog).filter_by(sotradies_id=t.id, canal="instantane").first():
@@ -44,8 +50,9 @@ def dispatch_new_tenders(force: bool = False):
             continue
 
         html = env.get_template("instant_alert_email.html").render(tender=t, score=best_score)
-        send_email(email, f"🔴 Offre très pertinente détectée — {t.objet[:60]}", html)
-
+        success = send_email(email, f"🔴 Offre très pertinente détectée — {t.objet[:60]}", html)
+        if not success:
+            continue  # on ne marque PAS comme envoyé, ce marché sera retenté au prochain passage
         db.add(SentLog(sotradies_id=t.id, commercial=t.commercial_assigne, canal="instantane"))
         envoyes += 1
         print(f"[notifier] ✅ Alerte envoyée à {t.commercial_assigne} ({email}) — score {best_score}%")

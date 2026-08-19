@@ -12,7 +12,7 @@ export function useDashboardData() {
     const retenus = tenders.filter((t) => t.statut === "retenu");
     const assignes = tenders.filter((t) => Boolean(t.commercial_assigne));
     const alertesDuJour = [...tenders]
-      .filter((t) => t.score > 80)
+      .filter((t) => t.score > 70)
       .sort((a, b) => b.score - a.score)
       .slice(0, 5);
 
