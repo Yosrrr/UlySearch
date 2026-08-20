@@ -16,7 +16,7 @@ from pdf2image import convert_from_bytes
 from PIL import Image
 
 from app.core.config import settings
-from app.core.database import SessionLocal
+from sqlalchemy.orm import Session
 from app.models.known_buyer import KnownBuyer
 from app.services.local_llm_client import call_local_llm_json
 from app.services.buyer_matcher import find_matching_buyer
@@ -93,7 +93,10 @@ def _extract_buyers_from_text(text: str) -> list[dict]:
     return all_buyers
 
 
-def import_buyers_from_scan(file_bytes: bytes, filename: str) -> dict:
+def import_buyers_from_scan(db: Session, file_bytes: bytes, filename: str) -> dict:
+    """Point d'entrée principal, appelé par la route API.
+    Fusionne avec la base existante (ne supprime rien), contrairement à
+    l'import Excel qui remplace tout."""
     text = extract_text(file_bytes, filename)
     if not text.strip():
         return {
@@ -102,8 +105,6 @@ def import_buyers_from_scan(file_bytes: bytes, filename: str) -> dict:
         }
 
     raw_buyers = _extract_buyers_from_text(text)
-
-    db = SessionLocal()
     known_buyers = db.query(KnownBuyer).all()
 
     crees, fusionnes, ignores = 0, 0, 0
@@ -146,7 +147,6 @@ def import_buyers_from_scan(file_bytes: bytes, filename: str) -> dict:
             crees += 1
 
     db.commit()
-    db.close()
 
     return {
         "detectes": len(raw_buyers),

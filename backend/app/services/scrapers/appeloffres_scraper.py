@@ -162,4 +162,4 @@ if __name__ == "__main__":
     tenders = scraper.fetch_tenders()
     print(f"\n{len(tenders)} marché(s) retenu(s) au total\n")
     for t in tenders[:15]:
-        print("-", t.objet[:80], "|", t.date_limite)
+        print("-", t.objet[:70], "|", t.date_limite)

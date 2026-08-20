@@ -1,11 +1,12 @@
 """API endpoints pour la gestion de la configuration (réservé superadmin)."""
+from datetime import datetime
+from typing import Optional, Dict, List, Any
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from typing import Optional, Dict, List, Any
-from datetime import datetime
+from sqlalchemy.orm import Session
 
-
-from app.core.database import SessionLocal
+from app.core.database import get_db
 from app.api.deps import require_superadmin
 from app.models.configuration import Configuration
 from app.services.config_service import get_or_create_config
@@ -52,63 +53,50 @@ class ConfigurationResponse(BaseModel):
         from_attributes = True
 
 
-# ===== Helper functions =====
-
-
 # ===== Endpoints =====
 
 @router.get("")
-def get_configuration(user: dict = Depends(require_superadmin)):
+def get_configuration(db: Session = Depends(get_db), user: dict = Depends(require_superadmin)):
     """Récupère la configuration actuelle."""
-    config = get_or_create_config()
+    config = get_or_create_config(db)
     return ConfigurationResponse.from_orm(config)
 
 
 @router.put("/thresholds")
 def update_thresholds(
     payload: ThresholdsUpdate,
+    db: Session = Depends(get_db),
     user: dict = Depends(require_superadmin)
 ):
     """Met à jour les seuils de pertinence."""
-    db = SessionLocal()
-    config = db.query(Configuration).first()
-    if not config:
-        config = Configuration()
-        db.add(config)
+    config = get_or_create_config(db)
 
     if payload.score_decision_threshold is not None:
         if not (0 <= payload.score_decision_threshold <= 100):
-            db.close()
             raise HTTPException(status_code=400, detail="score_decision_threshold doit être entre 0 et 100")
         config.score_decision_threshold = payload.score_decision_threshold
 
     if payload.score_instant_alert_threshold is not None:
         if not (0 <= payload.score_instant_alert_threshold <= 100):
-            db.close()
             raise HTTPException(status_code=400, detail="score_instant_alert_threshold doit être entre 0 et 100")
         config.score_instant_alert_threshold = payload.score_instant_alert_threshold
 
     config.derniere_modification = datetime.utcnow()
-    config.modifie_par = user.get("sub")  # email de l'utilisateur
+    config.modifie_par = user.get("sub")
 
     db.commit()
     db.refresh(config)
-    db.close()
-
     return ConfigurationResponse.from_orm(config)
 
 
 @router.put("/categories")
 def update_categories(
     payload: CategoriesUpdate,
+    db: Session = Depends(get_db),
     user: dict = Depends(require_superadmin)
 ):
     """Met à jour les catégories et leurs mots-clés."""
-    db = SessionLocal()
-    config = db.query(Configuration).first()
-    if not config:
-        config = Configuration()
-        db.add(config)
+    config = get_or_create_config(db)
 
     config.categories = payload.categories
     config.derniere_modification = datetime.utcnow()
@@ -116,22 +104,17 @@ def update_categories(
 
     db.commit()
     db.refresh(config)
-    db.close()
-
     return ConfigurationResponse.from_orm(config)
 
 
 @router.put("/exclusion-keywords")
 def update_exclusion_keywords(
     payload: ExclusionKeywordsUpdate,
+    db: Session = Depends(get_db),
     user: dict = Depends(require_superadmin)
 ):
     """Met à jour la liste des mots-clés d'exclusion."""
-    db = SessionLocal()
-    config = db.query(Configuration).first()
-    if not config:
-        config = Configuration()
-        db.add(config)
+    config = get_or_create_config(db)
 
     config.exclusion_keywords = payload.exclusion_keywords
     config.derniere_modification = datetime.utcnow()
@@ -139,22 +122,17 @@ def update_exclusion_keywords(
 
     db.commit()
     db.refresh(config)
-    db.close()
-
     return ConfigurationResponse.from_orm(config)
 
 
 @router.put("/sources")
 def update_sources(
     payload: SourcesUpdate,
+    db: Session = Depends(get_db),
     user: dict = Depends(require_superadmin)
 ):
     """Met à jour l'activation des sources de scraping."""
-    db = SessionLocal()
-    config = db.query(Configuration).first()
-    if not config:
-        config = Configuration()
-        db.add(config)
+    config = get_or_create_config(db)
 
     config.active_sources = payload.active_sources
     config.derniere_modification = datetime.utcnow()
@@ -162,22 +140,17 @@ def update_sources(
 
     db.commit()
     db.refresh(config)
-    db.close()
-
     return ConfigurationResponse.from_orm(config)
 
 
 @router.put("/assignment-rules")
 def update_assignment_rules(
     payload: AssignmentRulesUpdate,
+    db: Session = Depends(get_db),
     user: dict = Depends(require_superadmin)
 ):
     """Met à jour les règles d'assignation commerciale."""
-    db = SessionLocal()
-    config = db.query(Configuration).first()
-    if not config:
-        config = Configuration()
-        db.add(config)
+    config = get_or_create_config(db)
 
     config.assignment_rules = payload.assignment_rules
     config.derniere_modification = datetime.utcnow()
@@ -185,6 +158,4 @@ def update_assignment_rules(
 
     db.commit()
     db.refresh(config)
-    db.close()
-
     return ConfigurationResponse.from_orm(config)

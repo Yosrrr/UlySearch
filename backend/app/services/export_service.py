@@ -11,6 +11,20 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 HEADER_FILL = PatternFill(start_color="1E2F49", end_color="1E2F49", fill_type="solid")
 HEADER_FONT = Font(color="FFFFFF", bold=True)
 
+# Caractères qu'Excel/LibreOffice peuvent interpréter comme le début
+# d'une formule si un contenu externe non fiable (scraping) les contient
+# en première position (OWASP "CSV/Formula Injection").
+FORMULA_TRIGGER_CHARS = ("=", "+", "-", "@")
+
+
+def _sanitize_excel_cell(value):
+    """Neutralise une valeur texte qui pourrait être interprétée comme
+    une formule Excel — préfixe d'une apostrophe, sans changer les
+    valeurs numériques (score, etc.) qui n'ont pas ce risque."""
+    if isinstance(value, str) and value.startswith(FORMULA_TRIGGER_CHARS):
+        return "'" + value
+    return value
+
 
 def _truncate(text: str | None, length: int) -> str:
     if not text:
@@ -25,8 +39,8 @@ def tenders_to_excel(tenders: list) -> bytes:
     ws = wb.active
     ws.title = "Marchés"
 
-    headers = ["Référence", "Objet", "Acheteur", "Catégorie", "Score (%)", "Statut",
-               "Commercial", "Source", "Date publication", "Date limite", "Lien"]
+    headers = ["ID", "Objet", "Acheteur", "Catégorie", "Score (%)", "Statut",
+           "Commercial", "Source", "Date publication", "Date limite", "Lien"]
     ws.append(headers)
     for col in range(1, len(headers) + 1):
         cell = ws.cell(row=1, column=col)
@@ -35,17 +49,17 @@ def tenders_to_excel(tenders: list) -> bytes:
 
     for t in tenders:
         ws.append([
-            t.reference or "",
-            t.objet,
-            t.acheteur,
-            t.categorie or "",
-            t.score,
-            t.statut,
-            t.commercial_assigne or "",
-            t.source,
-            t.date_publication.strftime("%Y-%m-%d") if t.date_publication else "",
-            t.date_limite.strftime("%Y-%m-%d") if t.date_limite else "",
-            t.lien,
+            _sanitize_excel_cell(t.id or ""),
+             _sanitize_excel_cell(t.objet or ""),
+        _sanitize_excel_cell(t.acheteur or ""),
+        _sanitize_excel_cell(t.categorie or ""),
+        t.score,
+        t.statut,
+        _sanitize_excel_cell(t.commercial_assigne or ""),
+        _sanitize_excel_cell(t.source or ""),
+        t.date_publication.strftime("%Y-%m-%d") if t.date_publication else "",
+        t.date_limite.strftime("%Y-%m-%d") if t.date_limite else "",
+        _sanitize_excel_cell(t.lien or ""),
         ])
 
     widths = [16, 45, 30, 20, 10, 12, 18, 16, 16, 14, 40]
@@ -59,6 +73,8 @@ def tenders_to_excel(tenders: list) -> bytes:
 
 
 def tenders_to_pdf(tenders: list) -> bytes:
+    # Pas de sanitation nécessaire ici : un PDF n'exécute jamais de
+    # formule, le risque est spécifique aux tableurs (Excel/LibreOffice).
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4), title="Marchés — SOTRADIES")
     styles = getSampleStyleSheet()
@@ -108,10 +124,10 @@ def audit_log_to_excel(logs: list) -> bytes:
     for log in logs:
         ws.append([
             log.date_action.strftime("%Y-%m-%d %H:%M:%S"),
-            log.utilisateur_email,
+            _sanitize_excel_cell(log.utilisateur_email),
             log.action,
-            log.tender_objet or "",
-            log.detail or "",
+            _sanitize_excel_cell(log.tender_objet or ""),
+            _sanitize_excel_cell(log.detail or ""),
         ])
 
     widths = [20, 28, 20, 45, 35]

@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, Query, Response
 from datetime import datetime
+from sqlalchemy.orm import Session
 
-from app.core.database import SessionLocal
+from app.core.database import get_db
 from app.models.audit_log import AuditLog
 from app.models.sotradies import Sotradies
 from app.schemas.audit import AuditLogOut
@@ -46,12 +47,10 @@ def list_audit_log(
     utilisateur_email: str | None = Query(None),
     action: str | None = Query(None),
     limit: int = Query(200, le=1000),
+    db: Session = Depends(get_db),
     admin=Depends(require_superadmin),
 ):
-    db = SessionLocal()
-    out = _filtered_audit_log(db, utilisateur_email, action, limit)
-    db.close()
-    return out
+    return _filtered_audit_log(db, utilisateur_email, action, limit)
 
 
 @router.get("/export")
@@ -60,11 +59,10 @@ def export_audit_log(
     utilisateur_email: str | None = Query(None),
     action: str | None = Query(None),
     limit: int = Query(1000, le=5000),
+    db: Session = Depends(get_db),
     admin=Depends(require_superadmin),
 ):
-    db = SessionLocal()
     logs = _filtered_audit_log(db, utilisateur_email, action, limit)
-    db.close()
 
     date_str = datetime.utcnow().strftime("%Y%m%d")
     if format == "xlsx":

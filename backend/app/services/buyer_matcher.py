@@ -16,7 +16,7 @@ from app.core.database import SessionLocal
 from app.models.known_buyer import KnownBuyer
 
 GLOBAL_MATCH_THRESHOLD = 85    # similarité globale minimum
-DISTINCTIVE_WORD_THRESHOLD = 80  # similarité minimum sur le(s) mot(s) distinctif(s)
+DISTINCTIVE_WORD_THRESHOLD = 70  # similarité minimum sur le(s) mot(s) distinctif(s)
 
 # Mots génériques très fréquents dans les noms d'acheteurs publics tunisiens,
 # à ignorer pour identifier le(s) mot(s) réellement distinctif(s)

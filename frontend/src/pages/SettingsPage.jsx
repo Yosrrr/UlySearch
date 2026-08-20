@@ -52,7 +52,7 @@ export default function SettingsPage() {
 // ===== THRESHOLDS SECTION =====
 function ThresholdsSection({ initialConfig }) {
   const [decisionScore, setDecisionScore] = useState(initialConfig?.score_decision_threshold || 50);
-  const [instantScore, setInstantScore] = useState(initialConfig?.score_instant_alert_threshold || 80);
+  const [instantScore, setInstantScore] = useState(initialConfig?.score_instant_alert_threshold || 70);
   const queryClient = useQueryClient();
   const mutation = useMutation({
     mutationFn: () => updateThresholds(decisionScore, instantScore),

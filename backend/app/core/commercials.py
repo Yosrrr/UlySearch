@@ -1,6 +1,11 @@
-"""⚠️ PLACEHOLDER DE TEST — mettez votre propre email ici pour tout recevoir."""
+import os
+
 COMMERCIAL_EMAILS = {
-    "Ramzi Trabelsi": "yosrsbai8@gmail.com",
-    "Zied Hajji": "yosrsbai8@gmail.com",
-    "Salah Gharbi": "yosrsbai8@gmail.com",
+    "Ramzi Trabelsi": os.getenv("EMAIL_RAMZI_TRABELSI", ""),
+    "Zied Hajji": os.getenv("EMAIL_ZIED_HAJJI", ""),
+    "Salah Gharbi": os.getenv("EMAIL_SALAH_GHARBI", ""),
 }
+
+for nom, email in COMMERCIAL_EMAILS.items():
+    if not email:
+        print(f"[commercials] ⚠️ Aucune adresse configurée pour {nom} — les alertes pour cette personne ne partiront pas.")

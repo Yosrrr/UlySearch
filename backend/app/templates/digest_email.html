@@ -1,23 +1,10 @@
-<html>
-<body style="font-family: Arial, sans-serif;">
-  <h2>Récapitulatif quotidien — {{ commercial }}</h2>
-  {% if tenders %}
-  <table border="1" cellpadding="6" style="border-collapse: collapse; width:100%;">
-    <tr style="background:#1F3864; color:white;">
-      <th>Objet</th><th>Acheteur</th><th>Date limite</th><th>Client connu</th><th>Lien</th>
-    </tr>
-    {% for t in tenders %}
-    <tr>
-      <td>{{ t.objet }}</td>
-      <td>{{ t.acheteur }}</td>
-      <td>{{ t.date_limite or "Non communiquée" }}</td>
-      <td>{% if t.acheteur_connu == "Oui" %}⭐ Oui{% else %}—{% endif %}</td>
-      <td><a href="{{ t.lien }}">Voir l'avis</a></td>
-    </tr>
-    {% endfor %}
-  </table>
-  {% else %}
-  <p>Aucune nouvelle offre aujourd'hui.</p>
-  {% endif %}
-</body>
-</html>
+        html = env.get_template("digest_email.html").render(tenders=a_envoyer, commercial=commercial)
+        subject = f"Récapitulatif quotidien — {len(a_envoyer)} marché(s)"
+        success = send_email(email, subject, html)
+
+        if success:
+            for t in a_envoyer:
+                db.add(SentLog(sotradies_id=t.id, commercial=commercial, canal="digest"))
+            print(f"[notifier] ✅ Digest envoyé à {commercial} ({email}) — {len(a_envoyer)} marché(s)")
+        else:
+            print(f"[notifier] ❌ Échec du digest pour {commercial} ({email}) — retenté au prochain passage")

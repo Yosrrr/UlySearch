@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     CACHE_REDIS_URL: str = "redis://localhost:6379/2"
     
-    ADMIN_ALERT_EMAIL: str = "yosrsbai8@gmail.com"
+    ADMIN_ALERT_EMAIL: str 
     
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587

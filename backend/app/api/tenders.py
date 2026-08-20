@@ -1,9 +1,9 @@
-# app/api/tenders.py
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
-from app.core.database import SessionLocal
+from app.core.database import get_db
 from app.core.config import settings
 from app.models.sotradies import Sotradies
 from app.models.audit_log import AuditLog
@@ -51,15 +51,12 @@ def list_tenders(
     categorie: str | None = Query(None),
     score_min: int | None = Query(None),
     include_rejected: bool = Query(False),
+    db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    db = SessionLocal()
-    out = _filtered_tenders(db, search, commercial, statut, categorie, score_min, include_rejected)
-    db.close()
-    return out
+    return _filtered_tenders(db, search, commercial, statut, categorie, score_min, include_rejected)
 
 
-# ⚠️ /export et /rejected AVANT /{tender_id}, sinon FastAPI les confond avec un id
 @router.get("/export")
 def export_tenders(
     format: str = Query(..., pattern="^(xlsx|pdf)$"),
@@ -69,11 +66,10 @@ def export_tenders(
     categorie: str | None = Query(None),
     score_min: int | None = Query(None),
     include_rejected: bool = Query(False),
+    db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    db = SessionLocal()
     tenders = _filtered_tenders(db, search, commercial, statut, categorie, score_min, include_rejected)
-    db.close()
 
     date_str = datetime.utcnow().strftime("%Y%m%d")
     if format == "xlsx":
@@ -93,21 +89,17 @@ def export_tenders(
 
 
 @router.get("/rejected", response_model=list[TenderOut])
-def list_rejected_tenders(user=Depends(get_current_user)):
-    db = SessionLocal()
+def list_rejected_tenders(db: Session = Depends(get_db), user=Depends(get_current_user)):
     results = db.query(Sotradies).order_by(Sotradies.date_detection.desc()).all()
     out = [to_tender_out(t) for t in results]
-    db.close()
     return [t for t in out if t.score < settings.RELEVANCE_RETAIN_THRESHOLD and t.statut != "retenu"]
 
 
 @router.get("/{tender_id}", response_model=TenderOut)
-def get_tender(tender_id: str, user=Depends(get_current_user)):
-    db = SessionLocal()
+def get_tender(tender_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
     t = db.query(Sotradies).filter_by(id=tender_id).first()
 
     if not t:
-        db.close()
         raise HTTPException(status_code=404, detail="Marché introuvable")
 
     result = to_tender_out(t)
@@ -119,20 +111,17 @@ def get_tender(tender_id: str, user=Depends(get_current_user)):
         detail=None,
     ))
     db.commit()
-    db.close()
 
     return result
 
 
 @router.patch("/{tender_id}", response_model=TenderOut)
-def update_tender_status(tender_id: str, payload: TenderStatusUpdate, user=Depends(get_current_user)):
+def update_tender_status(tender_id: str, payload: TenderStatusUpdate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     if payload.statut not in ("nouveau", "retenu", "sans_suite"):
         raise HTTPException(status_code=400, detail="Statut invalide.")
 
-    db = SessionLocal()
     t = db.query(Sotradies).filter_by(id=tender_id).first()
     if not t:
-        db.close()
         raise HTTPException(status_code=404, detail="Marché introuvable")
 
     ancien_statut = t.statut
@@ -148,12 +137,4 @@ def update_tender_status(tender_id: str, payload: TenderStatusUpdate, user=Depen
 
     db.commit()
     db.refresh(t)
-    result = to_tender_out(t)
-    db.close()
-    return result
-@router.get("/config/thresholds")
-def get_thresholds(user=Depends(get_current_user)):
-    return {
-        "instant_alert_threshold": settings.RELEVANCE_INSTANT_ALERT_THRESHOLD,
-        "retain_threshold": settings.RELEVANCE_RETAIN_THRESHOLD,
-    }
+    return to_tender_out(t)
