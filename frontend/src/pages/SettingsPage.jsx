@@ -15,9 +15,21 @@ import {
 } from "../api/adminConfig";
 
 const SOURCES = [
-  { id: "tuneps", label: "TUNEPS" },
-  { id: "tunisie_appel_offre", label: "Tunisie Appel d'Offre" },
-  { id: "observatoire_national", label: "Observatoire National des Appels d'Offres" },
+  {
+    id: "onmp",
+    label: "ONMP — marchespublics.gov.tn",
+    disabled: false,
+  },
+  {
+    id: "appeloffres",
+    label: "appeloffres.com",
+    disabled: false,
+  },
+  {
+    id: "tuneps",
+    label: "TUNEPS — non implémenté (phase 2)",
+    disabled: true,
+  },
 ];
 
 export default function SettingsPage() {
@@ -116,7 +128,7 @@ function ThresholdsSection({ initialConfig }) {
                 min="0"
                 max="100"
                 value={instantScore}
-                onChange={(e) => setInstantScore(parseInt(e.target.value) || 80)}
+                onChange={(e) => setInstantScore(parseInt(e.target.value) || 70)}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
               />
               <span className="text-sm font-semibold text-ink-900">{instantScore}%</span>
@@ -416,7 +428,7 @@ function ExclusionKeywordsSection({ initialConfig }) {
           type="text"
           value={newKeyword}
           onChange={(e) => setNewKeyword(e.target.value)}
-          onKeyPress={(e) => e.key === "Enter" && handleAdd()}
+          onKeyDown={(e) => e.key === "Enter" && handleAdd()}
           className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
           placeholder="Ajouter un mot-clé..."
         />

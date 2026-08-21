@@ -21,7 +21,7 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /health
-    preDeployCommand: python -m scripts.bootstrap
+    preDeployCommand: alembic upgrade head && python -m scripts.bootstrap
     envVars:
       - key: ENV
         value: production
@@ -47,6 +47,8 @@ services:
         sync: false
       - key: INITIAL_ADMIN_NAME
         value: Administrateur SOTRADIES
+      - key: ADMIN_ALERT_EMAIL
+        sync: false
       - key: SMTP_USER
         sync: false
       - key: SMTP_PASSWORD
@@ -99,6 +101,11 @@ services:
           type: web
           name: sotradies
           envVarKey: SENDER_EMAIL
+      - key: ADMIN_ALERT_EMAIL
+        fromService:
+          type: web
+          name: sotradies
+          envVarKey: ADMIN_ALERT_EMAIL
 
   - type: worker
     name: sotradies-scheduler

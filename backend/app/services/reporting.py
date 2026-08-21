@@ -1,9 +1,8 @@
 """Layer 9 — Reporting périodique automatique à la direction."""
 from datetime import datetime, timedelta
-
-from jinja2 import Environment, FileSystemLoader
+from app.core.templates import email_env as env
 from sqlalchemy import func
-from jinja2 import select_autoescape
+
 
 
 from app.core.config import settings
@@ -11,11 +10,6 @@ from app.core.database import SessionLocal
 from app.models.sotradies import Sotradies
 from app.models.sent_log import SentLog
 from app.services.mailer import send_email
-
-env = Environment(
-    loader=FileSystemLoader("app/templates"),
-    autoescape=select_autoescape(["html"]),
-)
 
 
 def send_periodic_report(days: int = 7):

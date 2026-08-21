@@ -4,20 +4,21 @@ import axios from "axios";
 const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "/api",
   timeout: 10000,
+  withCredentials: true, // S8 : envoie automatiquement le cookie httpOnly
 });
 
-apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem("sotradies_token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+// Plus d'interceptor de requête : le cookie httpOnly est géré par le navigateur,
+// le JS n'a plus jamais accès au token (protection XSS).
 
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem("sotradies_token");
-      window.location.href = "/login";
+      // Session expirée ou révoquée côté serveur
+      localStorage.removeItem("sotradies_user");
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login";
+      }
     }
     return Promise.reject(error);
   }

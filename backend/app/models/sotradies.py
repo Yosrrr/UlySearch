@@ -46,3 +46,5 @@ class Sotradies(Base):
 
     def __repr__(self) -> str:
         return f"<Sotradies id={self.id} statut={self.statut} objet={self.objet[:40]!r}>"
+    
+    

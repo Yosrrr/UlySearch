@@ -1,24 +1,66 @@
 """
 Layer 4+6 fusionnés : un seul appel au modèle local (Qwen2.5 3B / Ollama)
 qui FILTRE l'offre (pertinent oui/non, catégorie, score) ET EXTRAIT ses
-détails (description, budget, durée...) en une seule passe, à partir du
-fichier .txt déjà sauvegardé (raw_dump.py).
-
-Décision direction du 17/08/2026 : le modèle local traite directement le
-texte brut complet, plutôt que le filtre par mots-clés suivi d'une
-extraction IA séparée.
+détails (description, budget, durée...) en une seule passe.
 """
 from datetime import date
 from dateutil import parser as date_parser
 
 from app.services.local_llm_client import call_local_llm_json
-from app.core.keywords import CATEGORIES
 
-CATEGORY_NAMES = list(CATEGORIES.keys())
+_EMPTY_RESULT = {
+    "pertinent": False,
+    "categorie": None,
+    "score": 0,
+    "raison": "Erreur technique IA (locale)",
+    "description_detaillee": None,
+    "budget_detecte": None,
+    "duree_execution": None,
+    "montant_cautionnement": None,
+    "type_marche": None,
+    "procedure_passation": None,
+    "region_execution": None,
+    "date_debut_execution": None,
+    "date_ouverture_offres": None,
+    "lieu_ouverture_offres": None,
+    "caractere_prix": None,
+}
 
-SYSTEM_PROMPT = f"""Tu tries et structures des appels d'offres publics tunisiens pour une société de vente/location de matériel roulant, engins TP et manutention (marques IVECO, CASE, HAMM, Wirtgen, Kleemann, Schwing Stetter, Hyster, Otokar, ALMIG, Himoinsa).
+def _safe_parse_date(raw) -> date | None:
+    if not raw:
+        return None
+    try:
+        return date_parser.parse(str(raw)).date()
+    except Exception:
+        return None
 
-Catégories possibles : {", ".join(CATEGORY_NAMES)}
+def _safe_float(raw) -> float | None:
+    if raw is None or raw == "":
+        return None
+    try:
+        return float(str(raw).replace(" ", "").replace(",", "."))
+    except (ValueError, TypeError):
+        return None
+
+def filter_and_extract(raw_txt_content: str, dynamic_categories: dict) -> dict:
+    """Prend le contenu complet, retourne un dict avec les résultats extraits.
+    Utilise dynamic_categories (provenant de la DB) pour construire le prompt."""
+    if not raw_txt_content or not raw_txt_content.strip():
+        return dict(_EMPTY_RESULT)
+
+    # 1. Extraction des noms de catégories et des marques depuis la config DB dynamique
+    category_names = list(dynamic_categories.keys())
+    
+    all_brands = []
+    for cat_data in dynamic_categories.values():
+        all_brands.extend(cat_data.get("marques", []))
+    
+    brands_str = f" (marques {', '.join(set(all_brands))})" if all_brands else ""
+
+    # 2. Construction dynamique du prompt
+    system_prompt = f"""Tu tries et structures des appels d'offres publics tunisiens pour une société de vente/location de matériel roulant, engins TP et manutention{brands_str}.
+
+Catégories possibles : {", ".join(category_names)}
 
 Le texte fourni contient les métadonnées de l'offre (objet, acheteur, dates) suivies du texte brut de la page de détail (peut être absent ou limité si la source est protégée par un abonnement — fais de ton mieux avec ce qui est disponible).
 
@@ -42,68 +84,37 @@ Réponds UNIQUEMENT en JSON strict, sans aucun texte autour, avec exactement ces
 }}
 N'invente jamais une valeur absente du texte — mets null. Si le texte de détail indique explicitement qu'il n'est pas accessible (abonnement requis), base-toi uniquement sur l'objet/catégorie déclarée pour "pertinent"/"categorie"/"score", et mets "description" à null plutôt que d'inventer un résumé."""
 
-_EMPTY_RESULT = {
-    "pertinent": False,
-    "categorie": None,
-    "score": 0,
-    "raison": "Erreur technique IA (locale)",
-    "description_detaillee": None,
-    "budget_detecte": None,
-    "duree_execution": None,
-    "montant_cautionnement": None,
-    "type_marche": None,
-    "procedure_passation": None,
-    "region_execution": None,
-    "date_debut_execution": None,
-    "date_ouverture_offres": None,
-    "lieu_ouverture_offres": None,
-    "caractere_prix": None,
-}
-
-
-def _safe_parse_date(raw) -> date | None:
-    if not raw:
-        return None
-    try:
-        return date_parser.parse(str(raw)).date()
-    except Exception:
-        return None
-
-
-def _safe_float(raw) -> float | None:
-    if raw is None or raw == "":
-        return None
-    try:
-        return float(str(raw).replace(" ", "").replace(",", "."))
-    except (ValueError, TypeError):
-        return None
-
-
-def filter_and_extract(raw_txt_content: str) -> dict:
-    """Prend le contenu complet du fichier .txt (métadonnées + détail),
-    retourne un dict prêt pour le scoring ET l'insertion en base."""
-    if not raw_txt_content or not raw_txt_content.strip():
-        return dict(_EMPTY_RESULT)
-
-    # Fenêtre de contexte limitée du modèle 3B local — même précaution
-    # que le reste du projet (ancien ai_detail_extractor.py tronquait à 3500).
-    data = call_local_llm_json(SYSTEM_PROMPT, raw_txt_content[:4000])
+    # 3. Appel à l'IA
+    data = call_local_llm_json(system_prompt, raw_txt_content[:4000])
 
     if data is None:
         print("[ai_filter_and_extract] Échec de l'appel IA locale.")
         return dict(_EMPTY_RESULT)
 
+    # 4. Validation et formatage
     categorie = data.get("categorie")
-    if categorie not in CATEGORY_NAMES:
-        categorie = None
+    pertinent = bool(data.get("pertinent"))
 
     try:
         score = int(data.get("score", 0))
     except (ValueError, TypeError):
         score = 0
 
+# Si l'IA invente une catégorie, on rejette le résultat.
+# Un marché pertinent sans catégorie valide est inexploitable :
+# pas de score_details cohérent, pas d'assignation commerciale.
+    if categorie not in category_names:
+        if pertinent:
+            print(
+                f"[ai_filter_and_extract] Catégorie IA hors configuration : {categorie!r}. "
+                "Résultat rejeté."
+             )
+        categorie = None
+        pertinent = False
+        score = 0
+
     return {
-        "pertinent": bool(data.get("pertinent")),
+        "pertinent": pertinent,
         "categorie": categorie,
         "score": score,
         "raison": data.get("raison", ""),

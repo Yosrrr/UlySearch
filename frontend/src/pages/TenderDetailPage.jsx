@@ -45,7 +45,7 @@ export default function TenderDetailPage() {
   if (isError || !tender) {
     return (
       <PageWrapper>
-        <Alert variant="error">Ce marche n'a pas pu etre charge.</Alert>
+        <Alert variant="error">Ce marché n'a pas pu être chargé.</Alert>
       </PageWrapper>
     );
   }
@@ -72,7 +72,7 @@ export default function TenderDetailPage() {
   return (
     <PageWrapper>
       <Link to="/tenders" className="mb-4 inline-flex items-center gap-1 text-sm text-slate-600 hover:text-ink-900">
-        <ArrowLeft size={14} /> Retour a la liste
+        <ArrowLeft size={14} /> Retour à la liste
       </Link>
 
       <div className="rounded-xl border border-slate-200 bg-white p-6">
@@ -86,7 +86,7 @@ export default function TenderDetailPage() {
             {hasScore ? (
               <ScoreBadge score={score} />
             ) : (
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-400">Score a venir</span>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-400">Score à venir</span>
             )}
             <TenderStatusBadge statut={tender.statut} />
           </div>
@@ -98,12 +98,15 @@ export default function TenderDetailPage() {
           <Field label="Date de publication" value={formatDate(tender.date_publication)} />
           <Field label="Date limite" value={formatDate(tender.date_limite)} />
           <Field label="Commercial assigne" value={tender.commercial_assigne} />
-          <Field label="Acheteur connu" value={tender.acheteur_connu ? "Oui" : "Non"} />
+          <Field
+             label="Acheteur connu"
+              value={tender.acheteur_connu === "Oui" ? "Oui" : "Non"}
+          />
         </dl>
 
         {tender.score_details && (
           <div className="mt-6 border-t border-slate-100 pt-6">
-            <p className="mb-2 text-sm font-medium text-ink-900">Detail du score par categorie</p>
+            <p className="mb-2 text-sm font-medium text-ink-900">Détail du score par catégorie</p>
             <div className="space-y-2">
               {Object.entries(tender.score_details).map(([cat, val]) => {
                 const catScore = typeof val === "object" ? val?.score : val;
@@ -147,7 +150,7 @@ export default function TenderDetailPage() {
         </div>
         {statusMutation.isError && (
           <div className="mt-3">
-            <Alert variant="error">Le changement de statut a echoue - reessayez.</Alert>
+            <Alert variant="error">Le changement de statut a échoué — réessayez.</Alert>
           </div>
         )}
 

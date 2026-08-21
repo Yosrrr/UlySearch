@@ -13,7 +13,7 @@ export default function RejectedTendersPage() {
   const [search, setSearch] = useState("");
   const queryClient = useQueryClient();
 
-  const repêcher = useMutation({
+  const restoreMutation = useMutation({
     mutationFn: (id) => updateTenderStatus(id, "retenu"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["rejected-tenders"] });
@@ -69,8 +69,8 @@ export default function RejectedTendersPage() {
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs text-slate-500">{t.raison_rejet}</span>
               <button
-                onClick={() => repêcher.mutate(t.id)}
-                disabled={repêcher.isPending}
+                onClick={() => restoreMutation.mutate(t.id)}
+                disabled={restoreMutation.isPending}
                 className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-ink-800 hover:bg-slate-50 disabled:opacity-60"
               >
                 <Undo2 size={12} /> Repêcher vers Marchés

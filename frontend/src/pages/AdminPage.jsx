@@ -279,7 +279,7 @@ async function handleExport(format) {
 }
 
   return (
-    <section>
+    <section> 
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
         <ScrollText size={18} className="text-slate-500" />
@@ -287,11 +287,6 @@ async function handleExport(format) {
         </div>
        <ExportButtons onExport={handleExport} exporting={exporting} />
     </div>
-      <div className="mb-3 flex items-center gap-2">
-        <ScrollText size={18} className="text-slate-500" />
-        <h2 className="font-display text-base font-semibold text-ink-900">Journal d'audit</h2>
-      </div>
-
       <div className="mb-4 flex flex-wrap gap-3">
         <input
           type="text"

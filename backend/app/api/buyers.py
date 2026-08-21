@@ -1,5 +1,5 @@
 import io
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -8,6 +8,7 @@ from app.schemas.buyer import BuyerOut, BuyerCreate, BuyerUpdate
 from app.services.buyer_importer import import_known_buyers
 from app.services.buyer_ocr_importer import import_buyers_from_scan
 from app.api.deps import get_current_user
+from app.core.rate_limiter import limiter
 
 router = APIRouter(prefix="/buyers", tags=["buyers"])
 
@@ -28,7 +29,11 @@ def list_buyers(db: Session = Depends(get_db), user=Depends(get_current_user)):
 
 
 @router.post("", response_model=BuyerOut)
-def create_buyer(payload: BuyerCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def create_buyer(
+    payload: BuyerCreate,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user)
+):
     nom = payload.nom_acheteur.strip()
     if not nom:
         raise HTTPException(status_code=400, detail="Le nom de l'acheteur est obligatoire.")
@@ -50,7 +55,11 @@ def create_buyer(payload: BuyerCreate, db: Session = Depends(get_db), user=Depen
 
 
 @router.post("/import")
-async def import_buyers(file: UploadFile = File(...), db: Session = Depends(get_db), user=Depends(get_current_user)):
+async def import_buyers(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user)
+):
     if not file.filename.endswith((".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="Le fichier doit être un Excel (.xlsx ou .xls).")
 
@@ -63,8 +72,14 @@ async def import_buyers(file: UploadFile = File(...), db: Session = Depends(get_
     return {"imported": count}
 
 
-@router.post("/import-scan")
-async def import_buyers_scan(file: UploadFile = File(...), db: Session = Depends(get_db), user=Depends(get_current_user)):
+@router.post("/import-scan")                        # ← corrigé : "/import-scan" au lieu de "/buyers/import-scan"
+@limiter.limit("3/minute")
+async def import_buyers_scan(
+    request: Request,                               # ← DÉPLACÉ EN PREMIER (était après file)
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user)
+):
     allowed = (".pdf", ".jpg", ".jpeg", ".png")
     if not file.filename.lower().endswith(allowed):
         raise HTTPException(status_code=400, detail="Le fichier doit être un PDF, JPG ou PNG.")
@@ -91,7 +106,12 @@ async def import_buyers_scan(file: UploadFile = File(...), db: Session = Depends
 
 
 @router.patch("/{buyer_id}", response_model=BuyerOut)
-def update_buyer(buyer_id: int, payload: BuyerUpdate, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def update_buyer(
+    buyer_id: int,
+    payload: BuyerUpdate,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user)
+):
     buyer = db.query(KnownBuyer).filter_by(id=buyer_id).first()
     if not buyer:
         raise HTTPException(status_code=404, detail="Acheteur introuvable.")

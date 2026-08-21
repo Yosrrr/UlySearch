@@ -1,10 +1,19 @@
 // src/components/tender/TenderFilters.jsx
 import { CATEGORY_LABELS, categoryLabel } from "../../utils/categories";
+import { useQuery } from "@tanstack/react-query";
+import { getRuntimeThresholds } from "../../api/config";
 
 const STATUTS = ["Tous", "nouveau", "retenu", "sans_suite"];
 const CATEGORIES = ["Toutes", ...Object.keys(CATEGORY_LABELS)];
 
 export default function TenderFilters({ value, onChange }) {
+  const { data } = useQuery({
+    queryKey: ["runtime-thresholds"],
+    queryFn: getRuntimeThresholds,
+    staleTime: 60_000,
+  });
+  const instantThreshold = data?.score_instant_alert_threshold ?? 70;
+
   function update(field, val) {
     onChange({ ...value, [field]: val });
   }
@@ -44,7 +53,7 @@ export default function TenderFilters({ value, onChange }) {
         className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
       >
         <option value="">Score minimum</option>
-        <option value="70">≥ 70% (priorité)</option>
+        <option value={instantThreshold}>≥ {instantThreshold}% (priorité)</option>
         <option value="50">≥ 50%</option>
       </select>
     </div>

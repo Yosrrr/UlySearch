@@ -10,7 +10,7 @@ import { categoryLabel } from "../utils/categories";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 export default function DashboardPage() {
-  const { dashboard, isLoading, isError } = useDashboardData();
+  const { dashboard, isLoading, isError, instantThreshold } = useDashboardData();
 
   if (isLoading) {
     return (
@@ -44,7 +44,7 @@ export default function DashboardPage() {
           <div className="mb-3 flex items-center justify-between">
             <h2 className="flex items-center gap-2 font-display text-base font-semibold text-ink-900">
               <AlertTriangle size={16} className="text-amber-500" />
-              Alertes (score &gt; 70%)
+              Alertes (score &gt; {instantThreshold}%)
             </h2>
             <Link to="/tenders" className="flex items-center gap-1 text-xs font-medium text-ink-700 hover:underline">
               Voir tous les marchés <ArrowRight size={12} />

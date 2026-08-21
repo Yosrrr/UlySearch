@@ -28,10 +28,10 @@ class Configuration(Base):
     #   },
     #   ...
     # }
-    categories = Column(JSONB, nullable=False, default={})
+    categories = Column(JSONB, nullable=False, default=dict)
     
     # Mots-clés d'exclusion (liste simple)
-    exclusion_keywords = Column(JSONB, nullable=False, default=[])
+    exclusion_keywords = Column(JSONB, nullable=False, default=list)
     
     # ===== Sources de scraping actives (Layer 1) =====
     # Format: {
@@ -39,7 +39,7 @@ class Configuration(Base):
     #   "tunisie_appel_offre": {"actif": true, "frequence": "daily"},
     #   "observatoire_national": {"actif": false, "frequence": "daily"}
     # }
-    active_sources = Column(JSONB, nullable=False, default={})
+    active_sources = Column(JSONB, nullable=False, default=dict)
     
     # ===== Assignation commerciale (Layer 7) =====
     # Format: {
@@ -48,7 +48,7 @@ class Configuration(Base):
     #   "MANUTENTION": ["Salah Gharbi"],
     #   ...
     # }
-    assignment_rules = Column(JSONB, nullable=False, default={})
+    assignment_rules = Column(JSONB, nullable=False, default=dict)
     
     # ===== Metadata =====
     derniere_modification = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
