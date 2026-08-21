@@ -1,17 +1,112 @@
-<html>
-<body style="font-family: Arial, sans-serif;">
-  <h2 style="color:#c0392b;">🔴 Offre très pertinente détectée</h2>
-  {% if tender.acheteur_connu == "Oui" %}
-  <p style="background:#FFD700; color:#1F3864; padding:6px 12px; display:inline-block; border-radius:4px; font-weight:bold;">
-    ⭐ CLIENT CONNU
-  </p>
-  {% endif %}
-  <table style="border-collapse: collapse; width:100%; margin-top:10px;">
-    <tr><td><b>Objet</b></td><td>{{ tender.objet }}</td></tr>
-    <tr><td><b>Acheteur</b></td><td>{{ tender.acheteur }}</td></tr>
-    <tr><td><b>Score</b></td><td>{{ score }}%</td></tr>
-    <tr><td><b>Date limite</b></td><td>{{ tender.date_limite or "Non communiquée" }}</td></tr>
-    <tr><td><b>Lien</b></td><td><a href="{{ tender.lien }}">{{ tender.lien }}</a></td></tr>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Alerte instantanée — SOTRADIES</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f4f5f7; font-family:Arial, Helvetica, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f5f7; padding:24px 0;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden; border:1px solid #e2e8f0;">
+
+          <!-- En-tête rouge alerte -->
+          <tr>
+            <td style="background-color:#C0392B; padding:24px 32px;">
+              <p style="margin:0; font-size:22px; color:#ffffff; font-weight:bold;">🔴 Alerte instantanée</p>
+              <p style="margin:6px 0 0; font-size:13px; color:#f5b7b1;">
+                Une offre très pertinente vient d'être détectée
+              </p>
+            </td>
+          </tr>
+
+          <!-- Badge client connu -->
+          {% if tender.acheteur_connu == "Oui" %}
+          <tr>
+            <td style="background-color:#FFF9C4; padding:12px 32px; border-bottom:1px solid #F9E547;">
+              <p style="margin:0; font-size:13px; color:#7D6608; font-weight:bold;">
+                ⭐ CLIENT CONNU — cet acheteur est déjà dans votre portefeuille client
+              </p>
+            </td>
+          </tr>
+          {% endif %}
+
+          <!-- Score -->
+          <tr>
+            <td style="padding:24px 32px 0;">
+              <table cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background-color:#E8873A; border-radius:20px; padding:4px 16px;">
+                    <span style="color:#ffffff; font-size:14px; font-weight:bold;">Score : {{ score }}%</span>
+                  </td>
+                  {% if tender.categorie %}
+                  <td style="padding-left:10px;">
+                    <span style="background-color:#EBF0FA; color:#1E2F49; font-size:12px; padding:4px 12px; border-radius:20px;">{{ tender.categorie }}</span>
+                  </td>
+                  {% endif %}
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Détails du marché -->
+          <tr>
+            <td style="padding:20px 32px 24px;">
+              <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0; border-radius:6px; overflow:hidden;">
+                <tr style="background-color:#f7fafc;">
+                  <td colspan="2" style="padding:12px 16px; border-bottom:1px solid #e2e8f0;">
+                    <p style="margin:0; font-size:15px; font-weight:bold; color:#1E2F49;">{{ tender.objet }}</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 16px; width:35%; color:#718096; font-size:13px; border-bottom:1px solid #f0f0f0; font-weight:600;">Acheteur</td>
+                  <td style="padding:10px 16px; color:#2d3748; font-size:13px; border-bottom:1px solid #f0f0f0;">{{ tender.acheteur }}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 16px; color:#718096; font-size:13px; border-bottom:1px solid #f0f0f0; font-weight:600;">Source</td>
+                  <td style="padding:10px 16px; color:#2d3748; font-size:13px; border-bottom:1px solid #f0f0f0;">{{ tender.source }}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 16px; color:#718096; font-size:13px; border-bottom:1px solid #f0f0f0; font-weight:600;">Date limite</td>
+                  <td style="padding:10px 16px; color:#2d3748; font-size:13px; border-bottom:1px solid #f0f0f0;">
+                    {% if tender.date_limite %}
+                      {{ tender.date_limite.strftime('%d/%m/%Y') }}
+                    {% else %}
+                      Non communiquée
+                    {% endif %}
+                  </td>
+                </tr>
+                {% if tender.description_detaillee %}
+                <tr>
+                  <td style="padding:10px 16px; color:#718096; font-size:13px; font-weight:600; vertical-align:top;">Description</td>
+                  <td style="padding:10px 16px; color:#2d3748; font-size:13px;">{{ tender.description_detaillee }}</td>
+                </tr>
+                {% endif %}
+                <tr>
+                  <td colspan="2" style="padding:12px 16px; background-color:#f7fafc;">
+                    <a href="{{ tender.lien }}"
+                       style="color:#1E2F49; font-size:13px; font-weight:bold; text-decoration:none;">
+                      🔗 Voir l'annonce source →
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color:#f7fafc; padding:16px 32px; border-top:1px solid #e2e8f0;">
+              <p style="margin:0; font-size:11px; color:#a0aec0;">
+                SOTRADIES — Veille des appels d'offres tunisiens · Cet email est généré automatiquement.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
   </table>
 </body>
 </html>

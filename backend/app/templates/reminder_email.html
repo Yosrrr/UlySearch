@@ -1,13 +1,96 @@
-<html>
-<body style="font-family: Arial, sans-serif;">
-  <h2 style="color:#d68910;">⏰ Rappel — date limite proche</h2>
-  <p>Le marché suivant n'a pas encore été traité, et sa date limite approche (<b>{{ jours_restants }} jour(s)</b>) :</p>
-  <table style="border-collapse: collapse; width:100%;">
-    <tr><td><b>Objet</b></td><td>{{ tender.objet }}</td></tr>
-    <tr><td><b>Acheteur</b></td><td>{{ tender.acheteur }}</td></tr>
-    <tr><td><b>Date limite</b></td><td>{{ tender.date_limite }}</td></tr>
-    <tr><td><b>Lien</b></td><td><a href="{{ tender.lien }}">{{ tender.lien }}</a></td></tr>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rappel — SOTRADIES</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f4f5f7; font-family:Arial, Helvetica, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f5f7; padding:24px 0;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden; border:1px solid #e2e8f0;">
+
+          <!-- En-tête -->
+          <tr>
+            <td style="background-color:#1E2F49; padding:24px 32px;">
+              <p style="margin:0; font-size:20px; color:#ffffff; font-weight:bold;">
+                {% if jours_restants == 1 %}
+                  ⏰ Rappel J-1 — Date limite demain
+                {% else %}
+                  ⏰ Rappel J-{{ jours_restants }} — Date limite dans {{ jours_restants }} jours
+                {% endif %}
+              </p>
+              <p style="margin:6px 0 0; font-size:13px; color:#a0b0c8;">
+                Ce marché n'a pas encore été traité
+              </p>
+            </td>
+          </tr>
+
+          <!-- Contenu -->
+          <tr>
+            <td style="padding:24px 32px;">
+
+              {% if jours_restants == 1 %}
+              <div style="background-color:#FFF5F5; border:1px solid #FC8181; border-radius:6px; padding:12px 16px; margin-bottom:20px;">
+                <p style="margin:0; font-size:13px; color:#C53030; font-weight:bold;">
+                  ⚠️ Urgent — La date limite est demain. Traitez ce marché dès aujourd'hui.
+                </p>
+              </div>
+              {% endif %}
+
+              <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0; border-radius:6px; overflow:hidden;">
+                <tr style="background-color:#f7fafc;">
+                  <td colspan="2" style="padding:12px 16px; border-bottom:1px solid #e2e8f0;">
+                    <p style="margin:0; font-size:15px; font-weight:bold; color:#1E2F49;">{{ tender.objet }}</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 16px; width:35%; color:#718096; font-size:13px; border-bottom:1px solid #f0f0f0; font-weight:600;">Acheteur</td>
+                  <td style="padding:10px 16px; color:#2d3748; font-size:13px; border-bottom:1px solid #f0f0f0;">{{ tender.acheteur }}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 16px; color:#718096; font-size:13px; border-bottom:1px solid #f0f0f0; font-weight:600;">Date limite</td>
+                  <td style="padding:10px 16px; font-size:13px; border-bottom:1px solid #f0f0f0;">
+                    {% if tender.date_limite %}
+                      <strong style="color:#C53030;">{{ tender.date_limite.strftime('%d/%m/%Y') }}</strong>
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 16px; color:#718096; font-size:13px; font-weight:600;">Source</td>
+                  <td style="padding:10px 16px; color:#2d3748; font-size:13px;">{{ tender.source }}</td>
+                </tr>
+                <tr>
+                  <td colspan="2" style="padding:12px 16px; background-color:#f7fafc;">
+                    <a href="{{ tender.lien }}"
+                       style="color:#1E2F49; font-size:13px; font-weight:bold; text-decoration:none;">
+                      🔗 Voir l'annonce source →
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:20px 0 0; font-size:13px; color:#718096;">
+                Merci de traiter ce marché (le classer ou le passer en "sans suite") depuis le dashboard SOTRADIES.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color:#f7fafc; padding:16px 32px; border-top:1px solid #e2e8f0;">
+              <p style="margin:0; font-size:11px; color:#a0aec0;">
+                SOTRADIES — Veille des appels d'offres tunisiens · Cet email est généré automatiquement.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
   </table>
-  <p>Merci de traiter ce marché (le classer ou le confirmer) depuis le dashboard.</p>
 </body>
 </html>
