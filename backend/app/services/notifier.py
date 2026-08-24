@@ -8,6 +8,8 @@ Les emails des commerciaux sont désormais lus depuis la table `commercials`
 (base de données) et non plus depuis un dictionnaire statique.
 """
 from datetime import datetime, date
+import email
+import html
 
 from app.core.templates import jinja_env
 from app.core.commercials import get_email_for_commercial, get_all_active_commercials
@@ -91,13 +93,14 @@ def dispatch_new_tenders(force: bool = False):
 
 
 def send_daily_digest(force: bool = False):
-    """Envoie le récapitulatif quotidien à chaque commercial actif."""
+    """Envoie le récapitulatif quotidien à chaque commercial actif.
+    Même s'il n'y a aucun marché, un email 'Aucun marché' est envoyé.
+    """
     if is_weekend() and not force:
         print("[notifier] Week-end : pas de digest.")
         return
 
     with session_scope() as db:
-        # Commerciaux lus depuis la base de données
         commerciaux = get_all_active_commercials(db)
 
         if not commerciaux:
@@ -128,20 +131,25 @@ def send_daily_digest(force: bool = False):
                 ).first()
             ]
 
+            # Toujours envoyer, même si a_envoyer == []
+            if a_envoyer:
+                subject = f"Récapitulatif quotidien — {len(a_envoyer)} marché(s)"
+            else:
+                subject = "Récapitulatif quotidien — Aucun marché à traiter"
+
             html = jinja_env.get_template("digest_email.html").render(
-                tenders=a_envoyer,
+                tenders=a_envoyer,   # [] est OK
                 commercial=commercial,
             )
-            subject = f"Récapitulatif quotidien — {len(a_envoyer)} marché(s)"
             success = send_email(email, subject, html)
-
             if not success:
                 print(
-                    f"[notifier] ⚠️ Échec envoi digest à {commercial} "
+                    f"[notifier] ⚠️ Échec digest pour {commercial} ({email}) "
                     "— retenté au prochain passage"
                 )
                 continue
 
+            # SentLog uniquement s'il y a des marchés (évite le bruit en base)
             for t in a_envoyer:
                 db.add(
                     SentLog(
@@ -150,10 +158,17 @@ def send_daily_digest(force: bool = False):
                         canal="digest",
                     )
                 )
-            print(
-                f"[notifier] ✅ Digest envoyé à {commercial} "
-                f"({email}) — {len(a_envoyer)} marché(s)"
-            )
+
+            if a_envoyer:
+                print(
+                    f"[notifier] ✅ Digest envoyé à {commercial} ({email}) "
+                    f"— {len(a_envoyer)} marché(s)"
+                )
+            else:
+                print(
+                    f"[notifier] ✅ Digest 'aucun marché' envoyé à "
+                    f"{commercial} ({email})"
+                )
 
 
 def send_reminders(force: bool = False):

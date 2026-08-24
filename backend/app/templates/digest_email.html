@@ -1,72 +1,98 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Récapitulatif quotidien — SOTRADIES</title>
 </head>
 <body style="margin:0; padding:0; background-color:#f4f5f7; font-family: Arial, Helvetica, sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f5f7; padding:24px 0;">
     <tr>
       <td align="center">
-        <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden;">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden; border:1px solid #e2e8f0;">
 
           <!-- En-tête -->
           <tr>
-            <td style="background-color:#1E2F49; padding:20px 24px;">
-              <p style="margin:0; color:#ffffff; font-size:18px; font-weight:bold;">SOTRADIES — Veille Appels d'Offres</p>
-              <p style="margin:4px 0 0; color:#c7d0dc; font-size:13px;">Récapitulatif quotidien</p>
+            <td style="background-color:#1E2F49; padding:24px 32px;">
+              <p style="margin:0; font-size:20px; color:#ffffff; font-weight:bold;">
+                Récapitulatif quotidien
+              </p>
+              <p style="margin:6px 0 0; font-size:13px; color:#a0b0c8;">
+                Bonjour {{ commercial }}
+              </p>
             </td>
           </tr>
 
-          <!-- Corps -->
+          <!-- Contenu -->
           <tr>
-            <td style="padding:24px;">
-              <p style="margin:0 0 16px; font-size:14px; color:#333333;">
-                Bonjour {{ commercial }},
-              </p>
+            <td style="padding:28px 32px;">
 
-              {% if tenders %}
-              <p style="margin:0 0 16px; font-size:14px; color:#333333;">
-                Voici les <strong>{{ tenders|length }}</strong> nouveau(x) marché(s) qui vous sont assignés :
-              </p>
+              {% if tenders and (tenders|length) > 0 %}
+                <p style="margin:0 0 20px; font-size:14px; color:#4a5568;">
+                  <strong>{{ tenders|length }} marché(s)</strong> vous sont assignés
+                  et n'ont pas encore été traités.
+                </p>
 
-              {% for tender in tenders %}
-              <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e6ea; border-radius:6px; margin-bottom:12px;">
-                <tr>
-                  <td style="padding:14px 16px;">
-                    <p style="margin:0 0 6px; font-size:14px; font-weight:bold; color:#1E2F49;">
-                      {{ tender.objet }}
-                    </p>
-                    <p style="margin:0 0 4px; font-size:13px; color:#555555;">
-                      <strong>Acheteur :</strong> {{ tender.acheteur }}
-                    </p>
-                    {% if tender.date_limite %}
-                    <p style="margin:0 0 4px; font-size:13px; color:#555555;">
-                      <strong>Date limite :</strong> {{ tender.date_limite.strftime("%d/%m/%Y") }}
-                    </p>
-                    {% endif %}
-                    <p style="margin:0 0 8px; font-size:13px; color:#555555;">
-                      <strong>Source :</strong> {{ tender.source }}
-                    </p>
-                    <a href="{{ tender.lien }}" style="font-size:13px; color:#E8873A; text-decoration:underline;">
-                      Voir l'annonce
-                    </a>
-                  </td>
-                </tr>
-              </table>
-              {% endfor %}
+                {% for t in tenders %}
+                <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0; border-radius:6px; margin-bottom:12px;">
+                  <tr>
+                    <td style="padding:14px 16px;">
+                      <p style="margin:0 0 8px; font-size:14px; font-weight:bold; color:#1E2F49;">
+                        {{ t.objet }}
+                      </p>
+                      <p style="margin:0 0 4px; font-size:12px; color:#718096;">
+                        Acheteur : {{ t.acheteur }}
+                      </p>
+                      <p style="margin:0 0 4px; font-size:12px; color:#718096;">
+                        Source : {{ t.source }}
+                        &nbsp;·&nbsp;
+                        Date limite :
+                        {% if t.date_limite %}
+                          {{ t.date_limite.strftime('%d/%m/%Y') }}
+                        {% else %}
+                          —
+                        {% endif %}
+                      </p>
+                      {% if t.acheteur_connu == "Oui" %}
+                      <p style="margin:8px 0 0;">
+                        <span style="background:#38a169; color:#fff; font-size:11px; padding:2px 10px; border-radius:99px; font-weight:bold;">
+                          Client connu
+                        </span>
+                      </p>
+                      {% endif %}
+                      {% if t.lien %}
+                      <p style="margin:10px 0 0;">
+                        <a href="{{ t.lien }}" style="color:#1E2F49; font-size:12px; font-weight:bold; text-decoration:none;">
+                          Voir l'annonce →
+                        </a>
+                      </p>
+                      {% endif %}
+                    </td>
+                  </tr>
+                </table>
+                {% endfor %}
+
               {% else %}
-              <p style="margin:0; font-size:14px; color:#555555;">
-                Aucun nouveau marché ne vous a été assigné aujourd'hui.
-              </p>
+                <!-- CAS 0 MARCHÉ — message obligatoire -->
+                <div style="text-align:center; padding:28px 12px;">
+                  <p style="margin:0 0 10px; font-size:18px; color:#1E2F49; font-weight:bold;">
+                    Aucun marché à traiter aujourd'hui
+                  </p>
+                  <p style="margin:0; font-size:13px; color:#718096; line-height:1.5;">
+                    Aucun nouvel appel d'offres ne vous a été assigné pour le moment.
+                    Vous serez notifié dès qu'un marché pertinent sera détecté.
+                  </p>
+                </div>
               {% endif %}
+
             </td>
           </tr>
 
-          <!-- Pied -->
+          <!-- Footer -->
           <tr>
-            <td style="background-color:#f0f2f5; padding:14px 24px;">
-              <p style="margin:0; font-size:11px; color:#8a94a0;">
-                Email automatique — Système de veille SOTRADIES. Ne pas répondre.
+            <td style="background-color:#f7fafc; padding:16px 32px; border-top:1px solid #e2e8f0;">
+              <p style="margin:0; font-size:11px; color:#a0aec0;">
+                SOTRADIES — Veille des appels d'offres tunisiens · Email automatique, ne pas répondre.
               </p>
             </td>
           </tr>
