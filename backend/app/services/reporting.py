@@ -1,6 +1,6 @@
 """Layer 9 — Reporting périodique automatique à la direction."""
 from datetime import datetime, timedelta
-from app.core.templates import email_env as env
+from app.core.templates import jinja_env as env
 from sqlalchemy import func
 
 

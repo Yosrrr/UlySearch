@@ -18,8 +18,7 @@ class Settings(BaseSettings):
 
     CACHE_REDIS_URL: str = "redis://localhost:6379/2"
     
-    ADMIN_ALERT_EMAIL: str 
-    
+    ADMIN_ALERT_EMAIL: str = "alertes@sotradies.tn"    
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
     SMTP_USER: str = ""
@@ -38,7 +37,7 @@ class Settings(BaseSettings):
     APPELOFFRES_USERNAME: str = ""
     APPELOFFRES_PASSWORD: str = ""
     
-    GEMINI_API_KEY: str = ""
+    
     
     DIRECTION_EMAIL: str = ""
 

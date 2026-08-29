@@ -18,4 +18,9 @@ celery_app.conf.beat_schedule = {
         "task": "tasks.send_reminders",
         "schedule": crontab(minute=30, hour=8, day_of_week="1-5"),
     },
+    "purge-donnees-hebdomadaire": {
+    "task": "tasks.run_cleanup",
+    "schedule": crontab(minute=0, hour=3, day_of_week="0"),  # dimanche 3h du matin
+    },
+    
 }
