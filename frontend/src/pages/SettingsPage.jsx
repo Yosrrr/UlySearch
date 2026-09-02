@@ -13,23 +13,16 @@ import {
   updateSources,
   updateAssignmentRules,
 } from "../api/adminConfig";
+import {
+  getCommercials,
+  createCommercial,
+  updateCommercial,
+} from "../api/adminCommercials";
 
 const SOURCES = [
-  {
-    id: "onmp",
-    label: "ONMP — marchespublics.gov.tn",
-    disabled: false,
-  },
-  {
-    id: "appeloffres",
-    label: "appeloffres.com",
-    disabled: false,
-  },
-  {
-    id: "tuneps",
-    label: "TUNEPS — non implémenté (phase 2)",
-    disabled: true,
-  },
+  { id: "onmp", label: "ONMP — marchespublics.gov.tn", disabled: false },
+  { id: "appeloffres", label: "appeloffres.com", disabled: false },
+  { id: "tuneps", label: "TUNEPS — tuneps.tn", disabled: false },
 ];
 
 export default function SettingsPage() {
@@ -44,7 +37,7 @@ export default function SettingsPage() {
   return (
     <PageWrapper
       title="Configuration"
-      subtitle="Mots-clés, seuils de score, sources actives, assignation commerciale."
+      subtitle="Mots-clés, seuils de score, sources actives, assignation commerciale, emails."
     >
       <div className="space-y-8">
         {config && (
@@ -54,6 +47,7 @@ export default function SettingsPage() {
             <ExclusionKeywordsSection initialConfig={config} />
             <SourcesSection initialConfig={config} />
             <AssignmentSection initialConfig={config} />
+            <CommercialsSection />
           </>
         )}
       </div>
@@ -96,9 +90,7 @@ function ThresholdsSection({ initialConfig }) {
       <form onSubmit={handleSave} className="space-y-5">
         <div className="grid gap-6 sm:grid-cols-2">
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">
-              Seuil de décision (%)
-            </label>
+            <label className="mb-2 block text-sm font-medium text-slate-700">Seuil de décision (%)</label>
             <p className="mb-2 text-xs text-slate-500">
               Score minimum pour qu'un marché soit "retenu" et passe au traitement suivant
             </p>
@@ -116,9 +108,7 @@ function ThresholdsSection({ initialConfig }) {
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">
-              Seuil d'alerte instantanée (%)
-            </label>
+            <label className="mb-2 block text-sm font-medium text-slate-700">Seuil d'alerte instantanée (%)</label>
             <p className="mb-2 text-xs text-slate-500">
               Score pour déclencher une alerte immédiate (au lieu du digest quotidien)
             </p>
@@ -217,7 +207,6 @@ function CategoriesSection({ initialConfig }) {
         <Save size={14} /> {mutation.isPending ? "Enregistrement..." : "Enregistrer les changements"}
       </button>
 
-      {/* Modals */}
       <Modal open={showAddModal} onClose={() => setShowAddModal(false)} title="Ajouter une catégorie">
         <AddCategoryForm onSave={handleAddCategory} />
       </Modal>
@@ -249,9 +238,7 @@ function CategoryCard({ id, data, onEdit, onDelete }) {
               <p className="text-xs font-medium text-slate-600 uppercase">Marques:</p>
               <div className="mt-1 flex flex-wrap gap-1">
                 {data.marques.map((m) => (
-                  <span key={m} className="rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-700">
-                    {m}
-                  </span>
+                  <span key={m} className="rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-700">{m}</span>
                 ))}
               </div>
             </div>
@@ -264,9 +251,7 @@ function CategoryCard({ id, data, onEdit, onDelete }) {
           )}
         </div>
         <div className="flex gap-2">
-          <button onClick={onEdit} className="text-slate-400 hover:text-ink-900">
-            ✏️
-          </button>
+          <button onClick={onEdit} className="text-slate-400 hover:text-ink-900">✏️</button>
           <button onClick={onDelete} className="text-slate-400 hover:text-rose-500">
             <Trash2 size={14} />
           </button>
@@ -360,28 +345,15 @@ function EditCategoryForm({ id, data, onSave }) {
       </div>
       <div>
         <label className="mb-1 block text-xs font-medium text-slate-600">Commercial assigné</label>
-        <input
-          value={commercial}
-          onChange={(e) => setCommercial(e.target.value)}
-          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-        />
+        <input value={commercial} onChange={(e) => setCommercial(e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
       </div>
       <div>
         <label className="mb-1 block text-xs font-medium text-slate-600">Marques (séparées par virgule)</label>
-        <input
-          value={marques}
-          onChange={(e) => setMarques(e.target.value)}
-          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-        />
+        <input value={marques} onChange={(e) => setMarques(e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
       </div>
       <div>
         <label className="mb-1 block text-xs font-medium text-slate-600">Mots-clés (séparés par virgule)</label>
-        <textarea
-          value={keywords}
-          onChange={(e) => setKeywords(e.target.value)}
-          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-          rows="3"
-        />
+        <textarea value={keywords} onChange={(e) => setKeywords(e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" rows="3" />
       </div>
       <button type="submit" className="w-full rounded-lg bg-ink-800 px-4 py-2 text-sm font-medium text-white hover:bg-ink-700">
         Enregistrer
@@ -408,10 +380,7 @@ function ExclusionKeywordsSection({ initialConfig }) {
     }
   };
 
-  const handleRemove = (kw) => {
-    setKeywords(keywords.filter((k) => k !== kw));
-  };
-
+  const handleRemove = (kw) => setKeywords(keywords.filter((k) => k !== kw));
   const handleSave = () => mutation.mutate();
 
   return (
@@ -432,24 +401,16 @@ function ExclusionKeywordsSection({ initialConfig }) {
           className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
           placeholder="Ajouter un mot-clé..."
         />
-        <button
-          onClick={handleAdd}
-          className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium hover:bg-slate-200"
-        >
+        <button onClick={handleAdd} className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium hover:bg-slate-200">
           <Plus size={14} />
         </button>
       </div>
 
       <div className="flex flex-wrap gap-2">
         {keywords.map((kw) => (
-          <div
-            key={kw}
-            className="flex items-center gap-2 rounded-full bg-rose-100 px-3 py-1.5 text-sm text-rose-700"
-          >
+          <div key={kw} className="flex items-center gap-2 rounded-full bg-rose-100 px-3 py-1.5 text-sm text-rose-700">
             <span>{kw}</span>
-            <button onClick={() => handleRemove(kw)} className="hover:text-rose-900">
-              ✕
-            </button>
+            <button onClick={() => handleRemove(kw)} className="hover:text-rose-900">✕</button>
           </div>
         ))}
       </div>
@@ -478,17 +439,11 @@ function SourcesSection({ initialConfig }) {
   });
 
   const handleToggleSource = (sourceId) => {
-    setSources({
-      ...sources,
-      [sourceId]: { ...sources[sourceId], actif: !sources[sourceId]?.actif },
-    });
+    setSources({ ...sources, [sourceId]: { ...sources[sourceId], actif: !sources[sourceId]?.actif } });
   };
 
   const handleChangeFrequence = (sourceId, freq) => {
-    setSources({
-      ...sources,
-      [sourceId]: { ...sources[sourceId], frequence: freq },
-    });
+    setSources({ ...sources, [sourceId]: { ...sources[sourceId], frequence: freq } });
   };
 
   const handleSave = () => mutation.mutate();
@@ -520,7 +475,6 @@ function SourcesSection({ initialConfig }) {
               >
                 <option value="daily">Quotidien</option>
                 <option value="weekly">Hebdomadaire</option>
-                <option value="realtime">Temps réel</option>
               </select>
             )}
           </div>
@@ -549,10 +503,7 @@ function AssignmentSection({ initialConfig }) {
   });
 
   const handleUpdateRule = (categoryId, commercials) => {
-    setRules({
-      ...rules,
-      [categoryId]: commercials.filter(Boolean),
-    });
+    setRules({ ...rules, [categoryId]: commercials.filter(Boolean) });
   };
 
   const handleSave = () => mutation.mutate();
@@ -572,15 +523,14 @@ function AssignmentSection({ initialConfig }) {
               type="text"
               value={rules[catId]?.join(", ") || ""}
               onChange={(e) =>
-                handleUpdateRule(
-                  catId,
-                  e.target.value.split(",").map((c) => c.trim())
-                )
+                handleUpdateRule(catId, e.target.value.split(",").map((c) => c.trim()))
               }
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
               placeholder="Commercial 1, Commercial 2"
             />
-            <p className="mt-2 text-xs text-slate-500">Séparez par des virgules</p>
+            <p className="mt-2 text-xs text-slate-500">
+              Séparez par des virgules. Les noms doivent correspondre à ceux de la section "Commerciaux & emails".
+            </p>
           </div>
         ))}
       </div>
@@ -593,5 +543,165 @@ function AssignmentSection({ initialConfig }) {
         <Save size={14} /> {mutation.isPending ? "Enregistrement..." : "Enregistrer"}
       </button>
     </section>
+  );
+}
+
+// ===== COMMERCIALS SECTION (emails) =====
+function CommercialsSection() {
+  const queryClient = useQueryClient();
+  const { data: commercials, isLoading } = useQuery({
+    queryKey: ["admin-commercials"],
+    queryFn: getCommercials,
+  });
+
+  const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState(null);
+
+  const createMutation = useMutation({
+    mutationFn: createCommercial,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-commercials"] });
+      setShowAdd(false);
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }) => updateCommercial(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-commercials"] });
+      setEditing(null);
+    },
+  });
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-6">
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h2 className="font-display text-lg font-semibold text-ink-900">Commerciaux &amp; emails</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Emails utilisés pour les alertes. Le nom doit correspondre exactement à celui
+            utilisé dans l'assignation commerciale.
+          </p>
+        </div>
+        <button
+          onClick={() => setShowAdd(true)}
+          className="flex items-center gap-1.5 rounded-lg bg-ink-800 px-3 py-2 text-sm font-medium text-white hover:bg-ink-700"
+        >
+          <Plus size={14} /> Ajouter
+        </button>
+      </div>
+
+      {isLoading && <Spinner />}
+
+      {commercials && commercials.length === 0 && (
+        <Alert variant="info">
+          Aucun commercial configuré — les alertes email ne partiront pas tant que la liste est vide.
+        </Alert>
+      )}
+
+      {commercials && commercials.length > 0 && (
+        <div className="overflow-hidden rounded-xl border border-slate-200">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Nom</th>
+                <th className="px-4 py-3">Email</th>
+                <th className="px-4 py-3">Statut</th>
+                <th className="px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {commercials.map((c) => (
+                <tr key={c.id} className="border-t border-slate-100">
+                  <td className="px-4 py-3 font-medium text-ink-900">{c.nom}</td>
+                  <td className="px-4 py-3 text-slate-600">{c.email}</td>
+                  <td className="px-4 py-3">
+                    <span className={`rounded-full px-2 py-1 text-xs font-medium ${
+                      c.actif ? "bg-teal-500/10 text-teal-600" : "bg-slate-100 text-slate-500"
+                    }`}>
+                      {c.actif ? "Actif" : "Inactif"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button onClick={() => setEditing(c)} className="text-slate-400 hover:text-ink-900">
+                      ✏️
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Ajouter un commercial">
+        <CommercialForm
+          onSave={(payload) => createMutation.mutate(payload)}
+          saving={createMutation.isPending}
+          errorMessage={createMutation.error?.response?.data?.detail}
+        />
+      </Modal>
+
+      <Modal open={Boolean(editing)} onClose={() => setEditing(null)} title="Modifier le commercial">
+        {editing && (
+          <CommercialForm
+            initial={editing}
+            onSave={(payload) => updateMutation.mutate({ id: editing.id, payload })}
+            saving={updateMutation.isPending}
+            errorMessage={updateMutation.error?.response?.data?.detail}
+          />
+        )}
+      </Modal>
+    </section>
+  );
+}
+
+function CommercialForm({ initial, onSave, saving, errorMessage }) {
+  const [nom, setNom] = useState(initial?.nom || "");
+  const [email, setEmail] = useState(initial?.email || "");
+  const [actif, setActif] = useState(initial?.actif ?? true);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!nom.trim() || !email.trim()) return;
+    onSave({ nom: nom.trim(), email: email.trim(), actif });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3">
+      {errorMessage && <Alert variant="error">{errorMessage}</Alert>}
+      <div>
+        <label className="mb-1 block text-xs font-medium text-slate-600">Nom complet</label>
+        <input
+          required
+          value={nom}
+          onChange={(e) => setNom(e.target.value)}
+          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          placeholder="Ex: Ramzi Trabelsi"
+        />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-slate-600">Email</label>
+        <input
+          required
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          placeholder="ramzi@sotradies.tn"
+        />
+      </div>
+      <label className="flex items-center gap-2 text-sm text-slate-700">
+        <input type="checkbox" checked={actif} onChange={(e) => setActif(e.target.checked)} />
+        Actif
+      </label>
+      <button
+        type="submit"
+        disabled={saving}
+        className="w-full rounded-lg bg-ink-800 px-4 py-2.5 text-sm font-medium text-white hover:bg-ink-700 disabled:opacity-60"
+      >
+        {saving ? "Enregistrement..." : "Enregistrer"}
+      </button>
+    </form>
   );
 }

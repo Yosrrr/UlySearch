@@ -1,6 +1,7 @@
 from celery.schedules import crontab
 from app.core.celery_app import celery_app
 
+
 celery_app.conf.beat_schedule = {
     "kickoff-scan-matinal": {
         "task": "tasks.kickoff_daily_scan",
@@ -22,5 +23,13 @@ celery_app.conf.beat_schedule = {
     "task": "tasks.run_cleanup",
     "schedule": crontab(minute=0, hour=3, day_of_week="0"),  # dimanche 3h du matin
     },
+    "rapport-hebdo-direction": {
+    "task": "tasks.send_periodic_report",
+    "schedule": crontab(day_of_week=1, hour=8, minute=0),  # lundi 8h
+    },
+    "tasks.send_periodic_report": {
+    "task": "tasks.send_periodic_report",
+    "schedule": crontab(hour=8, minute=0, day_of_week="mon"),
+},
     
 }

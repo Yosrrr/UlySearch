@@ -1,9 +1,20 @@
+"""Tâches Celery principales."""
+
 import random
 
+# Import explicite : permet d'enregistrer tasks.run_cleanup dans Celery.
+# Celery autodiscover charge app.workers.tasks, pas automatiquement
+# cleanup_tasks.py.
+from app.workers import cleanup_tasks  # noqa: F401
+from app.services.reporting import send_periodic_report 
+# à adapter au vrai nom
 from app.core.celery_app import celery_app
+from app.services.notifier import (
+    dispatch_new_tenders,
+    send_daily_digest,
+    send_reminders,
+)
 from app.services.pipeline import run_pipeline
-from app.services.notifier import dispatch_new_tenders, send_daily_digest, send_reminders
-
 
 
 @celery_app.task(name="tasks.kickoff_daily_scan")
@@ -15,7 +26,7 @@ def kickoff_daily_scan():
 
 @celery_app.task(name="tasks.run_daily_scan")
 def run_daily_scan():
-    """Scraping + scoring, puis alerte immédiate pour tout ce qui dépasse 70% par défaut."""
+    """Scraping + scoring, puis alertes instantanées."""
     summary = run_pipeline()
     dispatch_new_tenders()
     return summary
@@ -23,10 +34,19 @@ def run_daily_scan():
 
 @celery_app.task(name="tasks.send_digest")
 def send_digest():
-    """Récapitulatif quotidien, une seule fois par jour."""
-    send_daily_digest()
+    """Récapitulatif quotidien."""
+    return send_daily_digest()
+
 
 @celery_app.task(name="tasks.send_reminders")
 def send_reminders_task():
-    """Rappels J-3 et J-1 avant la date limite, pour les marchés non traités."""
+    """Rappels J-3 et J-1 avant la date limite."""
     return send_reminders()
+
+
+
+@celery_app.task(name="tasks.send_periodic_report")
+def send_periodic_report_task():
+    """Rapport périodique à la direction (Layer 9 du CdC)."""
+    return send_periodic_report()
+

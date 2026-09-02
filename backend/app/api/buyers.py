@@ -1,7 +1,8 @@
 import io
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from sqlalchemy.orm import Session
-
+from fastapi import BackgroundTasks
+from app.services.buyer_rematcher import rematch_all_tenders
 from app.core.database import get_db
 from app.models.known_buyer import KnownBuyer
 from app.schemas.buyer import BuyerOut, BuyerCreate, BuyerUpdate
@@ -31,8 +32,9 @@ def list_buyers(db: Session = Depends(get_db), user=Depends(get_current_user)):
 @router.post("", response_model=BuyerOut)
 def create_buyer(
     payload: BuyerCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user)
+    user=Depends(get_current_user),
 ):
     nom = payload.nom_acheteur.strip()
     if not nom:
@@ -50,7 +52,9 @@ def create_buyer(
     )
     db.add(buyer)
     db.commit()
+    background_tasks.add_task(rematch_all_tenders)
     db.refresh(buyer)
+    
     return buyer
 
 
@@ -109,8 +113,9 @@ async def import_buyers_scan(
 def update_buyer(
     buyer_id: int,
     payload: BuyerUpdate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user)
+    user=Depends(get_current_user),
 ):
     buyer = db.query(KnownBuyer).filter_by(id=buyer_id).first()
     if not buyer:
@@ -126,5 +131,7 @@ def update_buyer(
         buyer.notes = payload.notes
 
     db.commit()
+    background_tasks.add_task(rematch_all_tenders)
     db.refresh(buyer)
+    
     return buyer

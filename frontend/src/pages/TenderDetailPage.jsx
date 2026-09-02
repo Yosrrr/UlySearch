@@ -154,13 +154,31 @@ export default function TenderDetailPage() {
           </div>
         )}
 
-        {(tender.budget_detecte || tender.duree_execution || tender.montant_cautionnement) && (
-          <dl className="mt-6 grid grid-cols-2 gap-4 border-t border-slate-100 pt-6 text-sm sm:grid-cols-3">
-            <Field label="Budget detecte" value={tender.budget_detecte ? `${tender.budget_detecte.toLocaleString("fr-TN")} DT` : null} />
-            <Field label="Duree d'execution" value={tender.duree_execution} />
-            <Field label="Cautionnement provisoire" value={tender.montant_cautionnement ? `${tender.montant_cautionnement.toLocaleString("fr-TN")} DT` : null} />
-          </dl>
-        )}
+       {(
+            tender.budget_detecte != null ||
+            tender.duree_execution ||
+            tender.montant_cautionnement != null
+          ) && (
+            <dl className="mt-6 grid grid-cols-2 gap-4 border-t border-slate-100 pt-6 text-sm sm:grid-cols-3">
+              <Field
+                label="Budget détecté"
+                value={
+                  tender.budget_detecte != null
+                    ? `${tender.budget_detecte.toLocaleString("fr-TN")} DT`
+                    : null
+                }
+              />
+              <Field label="Durée d'exécution" value={tender.duree_execution} />
+              <Field
+                label="Cautionnement provisoire"
+                value={
+                  tender.montant_cautionnement != null
+                    ? `${tender.montant_cautionnement.toLocaleString("fr-TN")} DT`
+                    : null
+                }
+              />
+            </dl>
+          )}
 
         {hasComplementaryInfo && (
           <div className="mt-6 border-t border-slate-100 pt-6">

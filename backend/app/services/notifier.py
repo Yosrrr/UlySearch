@@ -7,7 +7,7 @@ Envoi des alertes email aux commerciaux :
 Les emails des commerciaux sont désormais lus depuis la table `commercials`
 (base de données) et non plus depuis un dictionnaire statique.
 """
-from datetime import datetime, date
+from datetime import datetime, date , UTC
 import email
 import html
 
@@ -206,7 +206,7 @@ def send_reminders(force: bool = False):
                     jours_restants=3,
                 )
                 if send_email(email, f"⏰ Rappel J-3 — {t.objet[:60]}", html):
-                    t.rappel_j3_envoye = datetime.utcnow()
+                    t.rappel_j3_envoye = datetime.now(UTC).replace(tzinfo=None)
                     envoyes += 1
 
             elif jours_restants == 1 and not t.rappel_j1_envoye:
@@ -215,7 +215,7 @@ def send_reminders(force: bool = False):
                     jours_restants=1,
                 )
                 if send_email(email, f"⏰ Rappel J-1 (urgent) — {t.objet[:60]}", html):
-                    t.rappel_j1_envoye = datetime.utcnow()
+                    t.rappel_j1_envoye = datetime.now(UTC).replace(tzinfo=None)
                     envoyes += 1
 
     print(f"[notifier] {envoyes} rappel(s) envoyé(s)")

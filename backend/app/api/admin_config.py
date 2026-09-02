@@ -1,5 +1,5 @@
 """API endpoints pour la gestion de la configuration (réservé superadmin)."""
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Optional, Dict, List, Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -81,7 +81,7 @@ def update_thresholds(
             raise HTTPException(status_code=400, detail="score_instant_alert_threshold doit être entre 0 et 100")
         config.score_instant_alert_threshold = payload.score_instant_alert_threshold
 
-    config.derniere_modification = datetime.utcnow()
+    config.derniere_modification = datetime.now(UTC).replace(tzinfo=None)
     config.modifie_par = user.get("sub")
 
     db.commit()
@@ -99,7 +99,7 @@ def update_categories(
     config = get_or_create_config(db)
 
     config.categories = payload.categories
-    config.derniere_modification = datetime.utcnow()
+    config.derniere_modification = datetime.now(UTC).replace(tzinfo=None)
     config.modifie_par = user.get("sub")
 
     db.commit()
@@ -117,7 +117,7 @@ def update_exclusion_keywords(
     config = get_or_create_config(db)
 
     config.exclusion_keywords = payload.exclusion_keywords
-    config.derniere_modification = datetime.utcnow()
+    config.derniere_modification = datetime.now(UTC).replace(tzinfo=None)
     config.modifie_par = user.get("sub")
 
     db.commit()
@@ -135,7 +135,7 @@ def update_sources(
     config = get_or_create_config(db)
 
     config.active_sources = payload.active_sources
-    config.derniere_modification = datetime.utcnow()
+    config.derniere_modification = datetime.now(UTC).replace(tzinfo=None)
     config.modifie_par = user.get("sub")
 
     db.commit()
@@ -153,7 +153,7 @@ def update_assignment_rules(
     config = get_or_create_config(db)
 
     config.assignment_rules = payload.assignment_rules
-    config.derniere_modification = datetime.utcnow()
+    config.derniere_modification = datetime.now(UTC).replace(tzinfo=None)
     config.modifie_par = user.get("sub")
 
     db.commit()

@@ -38,4 +38,10 @@ dist/
 
 backend/dump.rdb
 
+backend/debug_tuneps/
+backend/debug_tuneps_detail/
+backend/debug_*.html
+backend/debug_*.png
+backend/email_previews/
+
 

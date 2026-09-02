@@ -1,20 +1,31 @@
 """
 Pipeline complet : scraping -> filtre par date -> déduplication stricte
-(100% des champs stables) -> filtrage/extraction IA -> enrichissement
-acheteur -> assignation -> insertion.
+(100% des champs stables) -> scoring RÈGLES d'abord (mots-clés positifs,
+IA locale uniquement en arbitrage des cas ambigus — Principe 1 du CdC)
+-> extraction de détail IA UNIQUEMENT pour les marchés retenus
+-> enrichissement acheteur -> assignation -> insertion.
 
 Réutilisable à la fois en CLI (scripts/run_pipeline_all.py) et comme
 tâche Celery (app/workers/tasks.py).
 
-⚠️ Depuis la correction "catégories dynamiques" : ce module ne lit PLUS
-app/core/keywords.py. Toute la configuration métier (catégories, marques,
-mots-clés d'exclusion, règles d'assignation, seuils, sources actives)
-provient exclusivement de la table `configuration`, modifiable par
-l'administrateur sans intervention technique (exigence §6.5 du cahier
-des charges).
+⚠️ Configuration métier (catégories, mots-clés, exclusions, règles
+d'assignation, seuils, sources actives) lue exclusivement depuis la
+table `configuration` (exigence §6.5 du cahier des charges).
+
+⚠️ Architecture de scoring (retour au Principe 1, remplace la décision
+"IA directe" du 17/08 qui produisait des faux négatifs massifs avec le
+modèle local 3B) :
+  Tier 1 : mots-clés positifs par catégorie (déterministe, 0 coût)
+  Tier 2 : IA locale seulement si aucun match exact mais ressemblance
+           floue (needs_ai_fallback)
+  Extraction IA (budget, dates, procédure...) : uniquement sur les
+  marchés déjà retenus — elle ENRICHIT, ne dégrade jamais le verdict.
 """
 import hashlib
-from datetime import date, datetime
+from datetime import date, datetime, UTC
+from uuid import uuid4
+import time
+
 
 from unidecode import unidecode
 
@@ -25,17 +36,17 @@ from app.schemas.sotradies import SotradiesRaw
 from app.core.database import session_scope
 from app.models.sotradies import Sotradies
 from app.services.scrapers.onmp_scraper import OnmpScraper
+from app.services.scrapers.tuneps_scraper import TunepsScraper
 from app.services.scrapers.appeloffres_scraper import AppeloffresScraper
 from app.services.buyer_matcher import match_buyer
 from app.services.config_service import get_or_create_config
 from app.services.detail_fetcher import fetch_detail_text
 from app.services.raw_dump import dump_tender_to_txt
+from app.services.scoring_orchestrator import score_tender_full
 from app.services.ai_filter_and_extract import (
     filter_and_extract,
     _EMPTY_RESULT as _EMPTY_RESULT_FILTER,
 )
-from uuid import uuid4
-
 from app.services.pipeline_logger import log_pipeline_event
 
 SCRAPE_CACHE_TTL = 25 * 60  # 25 min — légèrement sous le cycle de 30 min
@@ -84,8 +95,7 @@ def filter_today_only(tenders: list, target_date: date) -> tuple[list, int]:
 
 
 def _alert_scraper_failure(source_name: str) -> None:
-    """0 résultat brut d'un scraper est anormal — alerte immédiate,
-    pour ne jamais découvrir un site cassé en silence."""
+    """0 résultat brut d'un scraper est anormal — alerte immédiate."""
     print(f"[pipeline] ⚠️ ALERTE : {source_name} n'a retourné aucun marché — site possiblement cassé.")
     try:
         send_email(
@@ -94,47 +104,49 @@ def _alert_scraper_failure(source_name: str) -> None:
             f"""<p>Le scraper <b>{source_name}</b> n'a retourné <b>aucun marché</b> lors du dernier passage.</p>
                 <p>Causes possibles : structure du site modifiée, site temporairement inaccessible,
                 blocage IP/captcha, identifiants expirés.</p>
-                <p>Vérifiez manuellement le site, et si besoin le dossier <code>debug_{source_name}/</code>
-                (capture d'écran + HTML brut sauvegardés automatiquement en cas d'échec).</p>""",
+                <p>Vérifiez manuellement le site.</p>""",
         )
     except Exception as e:
         print(f"[pipeline] Échec de l'envoi de l'alerte technique : {e}")
 
 
 def _alert_empty_configuration() -> None:
-    """Configuration sans aucune catégorie = pipeline aveugle. On alerte
-    l'admin plutôt que de tourner pour rien en silence (Règle 2 :
-    rien n'est perdu silencieusement)."""
-    print("[pipeline] ⚠️ ALERTE : aucune catégorie configurée en base — "
-          "aucun marché ne peut être classé. Configurez les catégories "
-          "dans l'écran d'administration.")
+    """Configuration sans aucune catégorie = pipeline aveugle."""
+    print("[pipeline] ⚠️ ALERTE : aucune catégorie configurée en base.")
     try:
         send_email(
             settings.ADMIN_ALERT_EMAIL,
             "⚠️ Configuration vide : aucune catégorie définie",
             """<p>Le pipeline de veille s'est exécuté mais <b>aucune catégorie
                n'est configurée</b> dans la table de configuration.</p>
-               <p>Conséquence : aucun marché ne peut être classé ni assigné.</p>
-               <p>Action requise : renseigner les catégories, mots-clés et règles
-               d'assignation dans l'écran <b>Configuration</b> de l'administration.</p>""",
+               <p>Action requise : renseigner les catégories dans l'administration.</p>""",
         )
     except Exception as e:
         print(f"[pipeline] Échec de l'envoi de l'alerte configuration : {e}")
 
 
 def _source_is_active(active_sources: dict, source_name: str) -> bool:
-    """Résout les noms actuels des scrapers ET les anciennes clés de
-    configuration (héritées d'init_config.py avant correction 3.2.9)."""
+    """Résout les noms actuels des scrapers ET les anciennes clés de config."""
     if not active_sources:
         return True
     aliases = {
         "onmp": ("onmp", "observatoire_national"),
         "appeloffres": ("appeloffres", "tunisie_appel_offre"),
-        "tuneps": ("tuneps",),
+        "tuneps": ("tuneps", "tuneps.tn"),
     }
     keys = aliases.get(source_name, (source_name,))
     configured = next((active_sources[key] for key in keys if key in active_sources), None)
     return configured is None or bool(configured.get("actif", True))
+
+
+def _best_category(score_details: dict) -> tuple[str | None, int]:
+    """Retourne (catégorie, score) du meilleur score dans score_details."""
+    best_cat, best_score = None, 0
+    for cat, detail in (score_details or {}).items():
+        s = int(detail.get("score", 0) or 0)
+        if s > best_score:
+            best_cat, best_score = cat, s
+    return best_cat, best_score
 
 
 def run_pipeline(target_date: date | None = None) -> dict:
@@ -143,9 +155,10 @@ def run_pipeline(target_date: date | None = None) -> dict:
     print(f"[pipeline] Run ID : {run_id}")
     print(f"[pipeline] Date ciblée : {target_date.isoformat()}")
 
-    scrapers = [OnmpScraper(), AppeloffresScraper()]
+    scrapers = [OnmpScraper(), AppeloffresScraper(), TunepsScraper()]
 
     total_nouveaux, total_doublons, total_hors_date, total_sans_date = 0, 0, 0, 0
+    ai_errors = 0  # échecs techniques IA (extraction) — pour l'alerte anti-silence
     retenus, non_retenus = [], []
     seen_this_run: set[str] = set()
     seuil_alerte = settings.RELEVANCE_INSTANT_ALERT_THRESHOLD
@@ -155,17 +168,17 @@ def run_pipeline(target_date: date | None = None) -> dict:
         seuil_retention = config.score_decision_threshold
         seuil_alerte = config.score_instant_alert_threshold
         configured_categories = config.categories or {}
-        configured_exclusions = config.exclusion_keywords or []
+        configured_exclusions = [
+            kw for kw in (config.exclusion_keywords or []) if str(kw).strip()
+        ]
         assignment_rules = config.assignment_rules or {}
         active_sources = config.active_sources or {}
 
         log_pipeline_event(
-            db,
-            run_id,
-            "RUN_STARTED",
+            db, run_id, "RUN_STARTED",
             message="Démarrage du pipeline",
             payload={
-                "target_date": target_date,
+                "target_date": target_date.isoformat(),
                 "seuil_retention": seuil_retention,
                 "seuil_alerte": seuil_alerte,
                 "categories": list(configured_categories.keys()),
@@ -176,9 +189,7 @@ def run_pipeline(target_date: date | None = None) -> dict:
         if not configured_categories:
             _alert_empty_configuration()
             log_pipeline_event(
-                db,
-                run_id,
-                "CONFIG_EMPTY",
+                db, run_id, "CONFIG_EMPTY",
                 message="Aucune catégorie configurée",
             )
 
@@ -188,9 +199,7 @@ def run_pipeline(target_date: date | None = None) -> dict:
             if not _source_is_active(active_sources, source_name):
                 print(f"[pipeline] Source désactivée par configuration : {source_name}")
                 log_pipeline_event(
-                    db,
-                    run_id,
-                    "SOURCE_DISABLED",
+                    db, run_id, "SOURCE_DISABLED",
                     source=source_name,
                     message="Source désactivée par configuration admin",
                 )
@@ -198,9 +207,7 @@ def run_pipeline(target_date: date | None = None) -> dict:
 
             print(f"[pipeline] Source : {source_name}")
             log_pipeline_event(
-                db,
-                run_id,
-                "SCRAPE_STARTED",
+                db, run_id, "SCRAPE_STARTED",
                 source=source_name,
                 message="Début scraping source",
             )
@@ -210,9 +217,7 @@ def run_pipeline(target_date: date | None = None) -> dict:
             except Exception as exc:
                 print(f"[pipeline] ❌ Erreur scraper {source_name}: {exc}")
                 log_pipeline_event(
-                    db,
-                    run_id,
-                    "SCRAPER_ERROR",
+                    db, run_id, "SCRAPER_ERROR",
                     source=source_name,
                     message=f"Erreur scraper {source_name}",
                     payload={"error": str(exc)},
@@ -221,9 +226,7 @@ def run_pipeline(target_date: date | None = None) -> dict:
                 continue
 
             log_pipeline_event(
-                db,
-                run_id,
-                "SCRAPE_FINISHED",
+                db, run_id, "SCRAPE_FINISHED",
                 source=source_name,
                 message="Fin scraping source",
                 payload={"raw_count": len(all_tenders)},
@@ -232,9 +235,7 @@ def run_pipeline(target_date: date | None = None) -> dict:
             if len(all_tenders) == 0:
                 _alert_scraper_failure(source_name)
                 log_pipeline_event(
-                    db,
-                    run_id,
-                    "SCRAPER_EMPTY",
+                    db, run_id, "SCRAPER_EMPTY",
                     source=source_name,
                     message="Scraper a retourné 0 marché",
                 )
@@ -245,13 +246,11 @@ def run_pipeline(target_date: date | None = None) -> dict:
             total_sans_date += sans_date
 
             log_pipeline_event(
-                db,
-                run_id,
-                "FILTER_DATE_SUMMARY",
+                db, run_id, "FILTER_DATE_SUMMARY",
                 source=source_name,
                 message="Résumé filtrage date",
                 payload={
-                    "target_date": target_date,
+                    "target_date": target_date.isoformat(),
                     "raw_count": len(all_tenders),
                     "kept_count": len(tenders),
                     "hors_date": hors_date,
@@ -267,11 +266,8 @@ def run_pipeline(target_date: date | None = None) -> dict:
                 if tender_id in seen_this_run:
                     total_doublons += 1
                     log_pipeline_event(
-                        db,
-                        run_id,
-                        "DUPLICATE_RUN",
-                        source=t.source,
-                        tender_id=tender_id,
+                        db, run_id, "DUPLICATE_RUN",
+                        source=t.source, tender_id=tender_id,
                         message="Doublon détecté dans le même run",
                         payload={"objet": t.objet, "reference": t.reference},
                     )
@@ -293,28 +289,21 @@ def run_pipeline(target_date: date | None = None) -> dict:
                         changed = True
 
                     if changed:
-                        existing.date_derniere_action = datetime.utcnow()
+                        existing.date_derniere_action = datetime.now(UTC).replace(tzinfo=None)
                         print(f"[pipeline] Marché mis à jour (date/budget modifié) : {t.objet[:60]}")
                         log_pipeline_event(
-                            db,
-                            run_id,
-                            "UPDATED_EXISTING",
-                            source=t.source,
-                            tender_id=tender_id,
+                            db, run_id, "UPDATED_EXISTING",
+                            source=t.source, tender_id=tender_id,
                             message="Marché existant mis à jour",
                             payload={
                                 "objet": t.objet,
-                                "date_limite": t.date_limite,
-                                "budget_estime": t.budget_estime,
+                                "date_limite": t.date_limite.isoformat() if t.date_limite else None,
                             },
                         )
                     else:
                         log_pipeline_event(
-                            db,
-                            run_id,
-                            "DUPLICATE_DB",
-                            source=t.source,
-                            tender_id=tender_id,
+                            db, run_id, "DUPLICATE_DB",
+                            source=t.source, tender_id=tender_id,
                             message="Doublon déjà présent en base",
                             payload={"objet": t.objet, "reference": t.reference},
                         )
@@ -322,97 +311,141 @@ def run_pipeline(target_date: date | None = None) -> dict:
 
                 total_nouveaux += 1
 
+                # ----------------------------------------------------------
+                # Exclusion par mots-clés négatifs (config admin)
+                # ----------------------------------------------------------
                 text_check = unidecode(t.objet or "").lower()
                 matched_exclusion = next(
-                    (
-                        kw for kw in configured_exclusions
-                        if unidecode(kw).lower() in text_check
-                    ),
+                    (kw for kw in configured_exclusions
+                     if unidecode(kw).lower() in text_check),
                     None,
                 )
 
+                ai_result = dict(_EMPTY_RESULT_FILTER)
+
                 if matched_exclusion:
                     categorie, score = None, 0
-                    ai_result = dict(_EMPTY_RESULT_FILTER)
-                    ai_result["raison"] = "Exclu par mot-clé (configuration admin), avant appel IA"
-
+                    score_details = {
+                        cat: {"score": 0, "mots_cles_matches": [], "methode": "exclusion"}
+                        for cat in configured_categories
+                    }
                     log_pipeline_event(
-                        db,
-                        run_id,
-                        "EXCLUDED_KEYWORD",
-                        source=t.source,
-                        tender_id=tender_id,
-                        message="Marché exclu avant IA par mot-clé",
-                        payload={
-                            "objet": t.objet,
-                            "keyword": matched_exclusion,
-                        },
+                        db, run_id, "EXCLUDED_KEYWORD",
+                        source=t.source, tender_id=tender_id,
+                        message="Marché exclu par mot-clé négatif",
+                        payload={"objet": t.objet, "keyword": matched_exclusion},
                     )
                 else:
-                    detail_text = fetch_detail_text(t.source, t.lien)
-                    dump_path = dump_tender_to_txt(tender_id, t, detail_text)
+                    # ------------------------------------------------------
+                    # SCORING — Tier 1 : règles (mots-clés positifs)
+                    # Tier 2 : IA locale si ambigu
+                    # ------------------------------------------------------
+                    score_details = score_tender_full(
+                        t, configured_categories, configured_exclusions
+                    )
+                    
+                    categorie, score = _best_category(score_details)
+                    # Anti-silence : échec technique IA au scoring fallback
+                    scoring_ai_failed = any(
+                        d.get("raison_ia") == "Erreur technique IA (locale)"
+                        for d in score_details.values()
+                    )
+                    if scoring_ai_failed:
+                        ai_errors += 1
+                        log_pipeline_event(
+                            db, run_id, "AI_ERROR",
+                            source=t.source, tender_id=tender_id,
+                            message="Échec technique IA au scoring — "
+                                    "marché rejeté par défaut (à revérifier)",
+                            payload={"objet": t.objet},
+                        )
 
                     log_pipeline_event(
-                        db,
-                        run_id,
-                        "DETAIL_FETCHED",
-                        source=t.source,
-                        tender_id=tender_id,
-                        message="Détail récupéré et dump texte créé",
+                        db, run_id, "SCORED",
+                        source=t.source, tender_id=tender_id,
+                        message="Scoring règles/IA-fallback",
                         payload={
-                            "lien": t.lien,
-                            "dump_path": str(dump_path),
-                            "detail_length": len(detail_text or ""),
-                        },
-                    )
-
-                    ai_result = filter_and_extract(
-                        dump_path.read_text(encoding="utf-8"),
-                        configured_categories,
-                    )
-
-                    categorie = ai_result["categorie"] if ai_result.get("pertinent") else None
-                    score = ai_result["score"] if ai_result.get("pertinent") else 0
-
-                    log_pipeline_event(
-                        db,
-                        run_id,
-                        "AI_RESULT",
-                        source=t.source,
-                        tender_id=tender_id,
-                        message="Résultat IA filtrage/extraction",
-                        payload={
-                            "pertinent": ai_result.get("pertinent"),
                             "categorie": categorie,
                             "score": score,
-                            "raison": ai_result.get("raison"),
+                            "methodes": {
+                                c: d.get("methode")
+                                for c, d in score_details.items()
+                                if d.get("score", 0) > 0
+                            },
                         },
                     )
 
-                score_details = {
-                    cat: {"score": 0, "mots_cles_matches": [], "methode": "ia_directe"}
-                    for cat in configured_categories
-                }
+                    # ------------------------------------------------------
+                    # EXTRACTION IA — uniquement pour les marchés retenus
+                    # ------------------------------------------------------
+                    if score >= seuil_retention:
+                        time.sleep(2)  # Pause pour ne pas surcharger le LLM local
+                        
+                        detail_text = fetch_detail_text(t.source, t.lien)
+                        dump_path = dump_tender_to_txt(tender_id, t, detail_text)
 
-                if categorie and categorie in configured_categories:
-                    score_details[categorie] = {
-                        "score": score,
-                        "mots_cles_matches": [],
-                        "methode": "ia_directe",
-                        "raison_ia": ai_result.get("raison", ""),
-                    }
+                        log_pipeline_event(
+                            db, run_id, "DETAIL_FETCHED",
+                            source=t.source, tender_id=tender_id,
+                            message="Détail récupéré et dump texte créé",
+                            payload={
+                                "lien": t.lien,
+                                "dump_path": str(dump_path),
+                                "detail_length": len(detail_text or ""),
+                            },
+                        )
 
+                        extraction = filter_and_extract(
+                            dump_path.read_text(encoding="utf-8"),
+                            configured_categories,
+                        )
+
+                        if extraction.get("raison") == "Erreur technique IA (locale)":
+                            ai_errors += 1
+
+                            # Même en cas d'erreur IA, filter_and_extract peut avoir généré
+                             # une description minimale depuis les métadonnées. On la conserve.
+                            if extraction.get("description_detaillee"):
+                                ai_result["description_detaillee"] = extraction["description_detaillee"]
+
+                            log_pipeline_event(
+                                db,
+                                run_id,
+                                "AI_ERROR",
+                                source=t.source,
+                                tender_id=tender_id,
+                                message="Échec technique IA extraction — description fallback conservée",
+                                payload={"objet": t.objet},
+                            )
+                        else:
+                            ai_result = {
+                                **ai_result,
+                                **{k: v for k, v in extraction.items() if v not in (None, "", [])},
+                            }
+
+                            log_pipeline_event(
+                                db,
+                                run_id,
+                                "AI_RESULT",
+                                source=t.source,
+                                tender_id=tender_id,
+                                message="Extraction IA de détail (enrichissement)",
+                                payload={
+                                    "pertinent": extraction.get("pertinent"),
+                                    "categorie_ia": extraction.get("categorie"),
+                                    "score_ia": extraction.get("score"),
+                                    "raison": extraction.get("raison"),
+                                },
+                            )
+                # Assignation
                 commercial = None
                 if categorie and categorie in configured_categories:
                     commercial = next(iter(assignment_rules.get(categorie, [])), None)
                     commercial = commercial or configured_categories[categorie].get("commercial")
 
                 log_pipeline_event(
-                    db,
-                    run_id,
-                    "ASSIGNED",
-                    source=t.source,
-                    tender_id=tender_id,
+                    db, run_id, "ASSIGNED",
+                    source=t.source, tender_id=tender_id,
                     message="Assignation commerciale calculée",
                     payload={
                         "categorie": categorie,
@@ -421,21 +454,7 @@ def run_pipeline(target_date: date | None = None) -> dict:
                     },
                 )
 
-                acheteur_connu = match_buyer(t.acheteur)
-
-                detail_info = {
-                    "description_detaillee": ai_result.get("description_detaillee"),
-                    "budget_detecte": ai_result.get("budget_detecte"),
-                    "duree_execution": ai_result.get("duree_execution"),
-                    "montant_cautionnement": ai_result.get("montant_cautionnement"),
-                    "type_marche": ai_result.get("type_marche"),
-                    "procedure_passation": ai_result.get("procedure_passation"),
-                    "region_execution": ai_result.get("region_execution"),
-                    "date_debut_execution": ai_result.get("date_debut_execution"),
-                    "date_ouverture_offres": ai_result.get("date_ouverture_offres"),
-                    "lieu_ouverture_offres": ai_result.get("lieu_ouverture_offres"),
-                    "caractere_prix": ai_result.get("caractere_prix"),
-                }
+                acheteur_connu = match_buyer(t.acheteur) or "Inconnu"
 
                 record = Sotradies(
                     id=tender_id,
@@ -452,17 +471,17 @@ def run_pipeline(target_date: date | None = None) -> dict:
                     commercial_assigne=commercial,
                     score_details=score_details,
                     acheteur_connu=acheteur_connu,
-                    description_detaillee=detail_info["description_detaillee"],
-                    budget_detecte=detail_info["budget_detecte"],
-                    duree_execution=detail_info["duree_execution"],
-                    montant_cautionnement=detail_info.get("montant_cautionnement"),
-                    type_marche=detail_info.get("type_marche"),
-                    procedure_passation=detail_info.get("procedure_passation"),
-                    region_execution=detail_info.get("region_execution"),
-                    date_debut_execution=detail_info.get("date_debut_execution"),
-                    date_ouverture_offres=detail_info.get("date_ouverture_offres"),
-                    lieu_ouverture_offres=detail_info.get("lieu_ouverture_offres"),
-                    caractere_prix=detail_info.get("caractere_prix"),
+                    description_detaillee=ai_result.get("description_detaillee"),
+                    budget_detecte=ai_result.get("budget_detecte"),
+                    duree_execution=ai_result.get("duree_execution"),
+                    montant_cautionnement=ai_result.get("montant_cautionnement"),
+                    type_marche=ai_result.get("type_marche"),
+                    procedure_passation=ai_result.get("procedure_passation"),
+                    region_execution=ai_result.get("region_execution"),
+                    date_debut_execution=ai_result.get("date_debut_execution"),
+                    date_ouverture_offres=ai_result.get("date_ouverture_offres"),
+                    lieu_ouverture_offres=ai_result.get("lieu_ouverture_offres"),
+                    caractere_prix=ai_result.get("caractere_prix"),
                 )
                 db.add(record)
 
@@ -470,11 +489,8 @@ def run_pipeline(target_date: date | None = None) -> dict:
                     record.statut = "retenu"
 
                 log_pipeline_event(
-                    db,
-                    run_id,
-                    "INSERTED",
-                    source=t.source,
-                    tender_id=tender_id,
+                    db, run_id, "INSERTED",
+                    source=t.source, tender_id=tender_id,
                     message="Marché inséré en base",
                     payload={
                         "objet": t.objet,
@@ -486,43 +502,47 @@ def run_pipeline(target_date: date | None = None) -> dict:
                     },
                 )
 
-                if score >= seuil_retention:
-                    log_pipeline_event(
-                        db,
-                        run_id,
-                        "RETAINED",
-                        source=t.source,
-                        tender_id=tender_id,
-                        message="Marché retenu",
-                        payload={"score": score, "seuil_retention": seuil_retention},
-                    )
-                else:
-                    log_pipeline_event(
-                        db,
-                        run_id,
-                        "REJECTED",
-                        source=t.source,
-                        tender_id=tender_id,
-                        message="Marché non retenu",
-                        payload={"score": score, "seuil_retention": seuil_retention},
-                    )
+                log_pipeline_event(
+                    db, run_id,
+                    "RETAINED" if score >= seuil_retention else "REJECTED",
+                    source=t.source, tender_id=tender_id,
+                    message="Marché retenu" if score >= seuil_retention else "Marché non retenu",
+                    payload={"score": score, "seuil_retention": seuil_retention},
+                )
 
                 entry = (score, categorie, commercial, t.source, t.objet, acheteur_connu)
                 (retenus if score >= seuil_retention else non_retenus).append(entry)
 
+        # Anti-silence : si des échecs IA techniques ont eu lieu, alerte admin.
+        if ai_errors:
+            print(f"[pipeline] ⚠️ {ai_errors} échec(s) technique(s) IA pendant ce run.")
+            try:
+                send_email(
+                    settings.ADMIN_ALERT_EMAIL,
+                    f"⚠️ Pipeline : {ai_errors} échec(s) IA locale",
+                    f"""<p>Le pipeline (run <code>{run_id}</code>) a rencontré
+                        <b>{ai_errors}</b> échec(s) technique(s) du modèle IA local
+                        lors de l'extraction de détail.</p>
+                        <p>Les marchés concernés restent retenus (verdict des règles),
+                        mais leurs champs enrichis (budget, procédure...) sont vides.</p>
+                        <p>Vérifiez qu'Ollama est démarré et que le modèle
+                        <code>{settings.OLLAMA_MODEL}</code> est disponible.</p>""",
+                )
+            except Exception as e:
+                print(f"[pipeline] Échec envoi alerte IA : {e}")
+
         log_pipeline_event(
-            db,
-            run_id,
-            "RUN_FINISHED",
+            db, run_id, "RUN_FINISHED",
             message="Fin du pipeline",
             payload={
-                "target_date": target_date,
+                "target_date": target_date.isoformat(),
                 "nouveaux": total_nouveaux,
                 "doublons": total_doublons,
                 "hors_date": total_hors_date,
                 "sans_date": total_sans_date,
                 "retenus": len(retenus),
                 "non_retenus": len(non_retenus),
+                "ai_errors": ai_errors,
             },
         )
 
@@ -549,6 +569,7 @@ def run_pipeline(target_date: date | None = None) -> dict:
         "alertes_instantanees": sum(1 for score, *_ in retenus if score > seuil_alerte),
         "acheteurs_connus": sum(1 for *_, ac in retenus if ac == "Oui"),
         "non_retenus": len(non_retenus),
+        "ai_errors": ai_errors,
     }
 
     print(f"\n[pipeline] Résumé : {summary}")

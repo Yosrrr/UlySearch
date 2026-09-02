@@ -55,6 +55,9 @@ services:
         sync: false
       - key: SENDER_EMAIL
         sync: false
+      - key: COMMERCIALS_SEED
+        sync: false
+      
 
   - type: worker
     name: sotradies-worker

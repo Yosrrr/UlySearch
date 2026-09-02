@@ -1,8 +1,7 @@
-from datetime import datetime
+from datetime import datetime, UTC
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-
 from app.core.database import get_db
 from app.core.config import settings
 from app.models.sotradies import Sotradies
@@ -71,7 +70,7 @@ def export_tenders(
 ):
     tenders = _filtered_tenders(db, search, commercial, statut, categorie, score_min, include_rejected)
 
-    date_str = datetime.utcnow().strftime("%Y%m%d")
+    date_str = datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%d")
     if format == "xlsx":
         content = tenders_to_excel(tenders)
         media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -126,7 +125,7 @@ def update_tender_status(tender_id: str, payload: TenderStatusUpdate, db: Sessio
 
     ancien_statut = t.statut
     t.statut = payload.statut
-    t.date_derniere_action = datetime.utcnow()
+    t.date_derniere_action = datetime.now(UTC).replace(tzinfo=None)
 
     db.add(AuditLog(
         sotradies_id=t.id,
