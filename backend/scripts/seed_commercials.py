@@ -11,8 +11,8 @@ from app.models.commercial import Commercial
 
 NOMS_COMMERCIAUX = [
     "Ramzi Trabelsi",
-    "Zied Hajji",
-    "Salah Gharbi",
+    "Ramzi Trabelsi",
+    "Ramzi Trabelsi",
 ]
 
 

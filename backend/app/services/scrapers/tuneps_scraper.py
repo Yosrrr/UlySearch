@@ -8,7 +8,7 @@ Avantages vs navigateur :
 - pas de Playwright en production pour cette source ;
 - rapide (~1 s par page de 100 avis) ;
 - le nom de l'acheteur (bidInstNm) est PUBLIC → matching Layer 5 possible
-  (contrairement à appeloffres.com).
+  
 
 Structure de réponse :
     {"code": "200", "payload": {"data": [...], "total": N}}
@@ -23,9 +23,9 @@ import certifi
 os.environ.setdefault("CURL_CA_BUNDLE", certifi.where())
 os.environ.setdefault("SSL_CERT_FILE", certifi.where())
 
-from scrapling.fetchers import Fetcher  # noqa: E402
+from scrapling.fetchers import Fetcher     
 
-from app.schemas.sotradies import SotradiesRaw  # noqa: E402
+from app.schemas.sotradies import SotradiesRaw     
 
 
 API_URL = "https://www.tuneps.tn/api2/portail/bid/master/data"

@@ -24,9 +24,19 @@ def _detect_real_type(contents: bytes) -> str | None:
     return None
 
 
+def _buyer_query(db: Session, user):
+    query = db.query(KnownBuyer)
+    if user.get("profil") == "superadmin":
+        return query
+    company_id = user.get("company_id")
+    if company_id is None:
+        raise HTTPException(status_code=403, detail="Compte non rattaché à une entreprise.")
+    return query.filter(KnownBuyer.company_id == int(company_id))
+
+
 @router.get("", response_model=list[BuyerOut])
 def list_buyers(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    return db.query(KnownBuyer).order_by(KnownBuyer.nom_acheteur).all()
+    return _buyer_query(db, user).order_by(KnownBuyer.nom_acheteur).all()
 
 
 @router.post("", response_model=BuyerOut)
@@ -40,11 +50,13 @@ def create_buyer(
     if not nom:
         raise HTTPException(status_code=400, detail="Le nom de l'acheteur est obligatoire.")
 
-    existing = db.query(KnownBuyer).filter(KnownBuyer.nom_acheteur == nom).first()
+    query = _buyer_query(db, user)
+    existing = query.filter(KnownBuyer.nom_acheteur == nom).first()
     if existing:
         raise HTTPException(status_code=409, detail="Un acheteur avec ce nom existe déjà.")
 
     buyer = KnownBuyer(
+        company_id=None if user.get("profil") == "superadmin" else int(user["company_id"]),
         nom_acheteur=nom,
         variantes=payload.variantes,
         client_sotradies=payload.client_sotradies or "Non",
@@ -69,7 +81,8 @@ async def import_buyers(
 
     contents = await file.read()
     try:
-        count = import_known_buyers(db, io.BytesIO(contents))
+        company_id = None if user.get("profil") == "superadmin" else int(user["company_id"])
+        count = import_known_buyers(db, io.BytesIO(contents), company_id=company_id)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Échec de l'import : {exc}")
 
@@ -102,7 +115,8 @@ async def import_buyers_scan(
         raise HTTPException(status_code=400, detail="L'extension ne correspond pas au contenu réel du fichier.")
 
     try:
-        result = import_buyers_from_scan(db, contents, file.filename)
+        company_id = None if user.get("profil") == "superadmin" else int(user["company_id"])
+        result = import_buyers_from_scan(db, contents, file.filename, company_id=company_id)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Échec de l'analyse du document : {exc}")
 
@@ -117,7 +131,7 @@ def update_buyer(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    buyer = db.query(KnownBuyer).filter_by(id=buyer_id).first()
+    buyer = _buyer_query(db, user).filter(KnownBuyer.id == buyer_id).first()
     if not buyer:
         raise HTTPException(status_code=404, detail="Acheteur introuvable.")
 

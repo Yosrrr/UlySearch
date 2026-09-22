@@ -1,6 +1,6 @@
 """Génération des exports Excel et PDF — marchés et journal d'audit."""
 from io import BytesIO
-
+from app.core.config import settings
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from reportlab.lib import colors
@@ -76,9 +76,12 @@ def tenders_to_pdf(tenders: list) -> bytes:
     # Pas de sanitation nécessaire ici : un PDF n'exécute jamais de
     # formule, le risque est spécifique aux tableurs (Excel/LibreOffice).
     buf = BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), title="Marchés — SOTRADIES")
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), title=f"Marchés — {settings.APP_NAME}")
     styles = getSampleStyleSheet()
-    elements = [Paragraph("Marchés — Veille des appels d'offres SOTRADIES", styles["Title"]), Spacer(1, 10)]
+    elements = [Paragraph(
+    f"Marchés — Veille des appels d'offres {settings.APP_NAME}",
+    styles["Title"],
+), Spacer(1, 10)]
 
     data = [["Objet", "Acheteur", "Catégorie", "Score", "Statut", "Commercial", "Date limite"]]
     for t in tenders:
@@ -144,7 +147,10 @@ def audit_log_to_pdf(logs: list) -> bytes:
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4), title="Journal d'audit — SOTRADIES")
     styles = getSampleStyleSheet()
-    elements = [Paragraph("Journal d'audit — Veille des appels d'offres SOTRADIES", styles["Title"]), Spacer(1, 10)]
+    elements = [Paragraph(
+    f"Marchés — Veille des appels d'offres {settings.APP_NAME}",
+    styles["Title"],
+), Spacer(1, 10)]
 
     data = [["Date", "Utilisateur", "Action", "Marché concerné"]]
     for log in logs:

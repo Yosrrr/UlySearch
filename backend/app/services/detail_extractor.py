@@ -40,40 +40,9 @@ def extract_onmp_detail(lien: str) -> dict:
         return dict(_EMPTY_RESULT)
 
 
-def extract_appeloffres_detail(lien: str) -> dict:
-    if not settings.APPELOFFRES_USERNAME:
-        result = dict(_EMPTY_RESULT)
-        result["description_detaillee"] = (
-            "Contenu complet non accessible — nécessite un abonnement appeloffres.com "
-            "(voir le lien source pour les détails)."
-        )
-        return result
-
-    try:
-        resp = requests.get(lien, timeout=15, headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        })
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "lxml")
-        full_text = soup.get_text(" ", strip=True)
-
-        if _is_paywalled(full_text):
-            result = dict(_EMPTY_RESULT)
-            result["description_detaillee"] = (
-                "Contenu complet non accessible — identifiants configurés mais "
-                "connexion à appeloffres.com non implémentée pour cette page."
-            )
-            return result
-
-        return clean_and_structure(full_text)
-    except Exception as e:
-        print(f"[detail_extractor] Échec extraction appeloffres ({lien}) : {e}")
-        return dict(_EMPTY_RESULT)
-
 
 def extract_detail(source: str, lien: str) -> dict:
     if source == "onmp":
         return extract_onmp_detail(lien)
-    elif source == "appeloffres":
-        return extract_appeloffres_detail(lien)
+    
     return dict(_EMPTY_RESULT)

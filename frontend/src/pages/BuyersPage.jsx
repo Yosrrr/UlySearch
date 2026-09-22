@@ -48,7 +48,7 @@ export default function BuyersPage() {
   return (
     <PageWrapper
       title="Acheteurs"
-      subtitle="Liste des acheteurs déjà clients SOTRADIES — utilisée pour prioriser les alertes."
+      subtitle="Liste des acheteurs déjà clients VeilleAO — utilisée pour prioriser les alertes."
       actions={
         <button
           onClick={() => setCreating(true)}

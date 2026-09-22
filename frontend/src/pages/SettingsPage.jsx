@@ -21,8 +21,7 @@ import {
 
 const SOURCES = [
   { id: "onmp", label: "ONMP — marchespublics.gov.tn", disabled: false },
-  { id: "appeloffres", label: "appeloffres.com", disabled: false },
-  { id: "tuneps", label: "TUNEPS — tuneps.tn", disabled: false },
+  { id: "tuneps", label: "TUNEPS — tuneps.tn", disabled: false }
 ];
 
 export default function SettingsPage() {
@@ -54,6 +53,7 @@ export default function SettingsPage() {
     </PageWrapper>
   );
 }
+
 
 // ===== THRESHOLDS SECTION =====
 function ThresholdsSection({ initialConfig }) {
@@ -491,6 +491,7 @@ function SourcesSection({ initialConfig }) {
     </section>
   );
 }
+
 
 // ===== ASSIGNMENT SECTION =====
 function AssignmentSection({ initialConfig }) {

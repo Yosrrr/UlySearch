@@ -2,10 +2,10 @@
 Point d'entrée FastAPI — Sotradies Veille & Scoring AO.
 
 Correctifs intégrés :
-- S6  : Rate limiting avec slowapi
-- S8  : Auth cookie httpOnly côté API
-- S9  : Schéma géré par Alembic, pas par create_all()
-- S14 : En-têtes de sécurité HTTP
+- S6  : Rate limiting avec SlowAPI
+- S8  : Authentification par cookie httpOnly
+- S9  : Schéma géré par Alembic
+- S14 : En-têtes HTTP de sécurité
 """
 
 from pathlib import Path
@@ -18,7 +18,42 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.api import (
+from app.core.config import settings
+from app.core.init_config import init_default_configuration
+from app.core.rate_limiter import limiter
+
+
+# ---------------------------------------------------------------------------
+# Modèles SQLAlchemy
+# ---------------------------------------------------------------------------
+
+# Ces imports enregistrent les modèles dans Base.metadata et permettent
+# à SQLAlchemy de résoudre leurs relations.
+from app.models import (  # noqa: F401
+    audit_log,
+    commercial,
+    company,
+    configuration,
+    known_buyer,
+    pipeline_log,
+    scraping_source,
+    sent_log,
+    sotradies,
+    system_action_log,
+    user,
+)
+
+# Ajoutez-les ici uniquement lorsque les fichiers existent :
+#
+# from app.models import company_source  # noqa: F401
+# from app.models import company_tender  # noqa: F401
+
+
+# ---------------------------------------------------------------------------
+# Routeurs API
+# ---------------------------------------------------------------------------
+
+from app.api import (   
     admin_config,
     admin_system,
     admin_users,
@@ -26,33 +61,44 @@ from app.api import (
     config_public,
     tenders,
 )
-from app.api.admin_commercials import router as admin_commercials_router
-from app.api.audit import router as audit_router
-from app.api.buyers import router as buyers_router
-from app.core.config import settings
-from app.core.init_config import init_default_configuration
-from app.core.rate_limiter import limiter
+from app.api.admin_ai_suggest import (   
+    router as ai_suggest_router,
+)
+from app.api.admin_commercials import (   
+    router as admin_commercials_router,
+)
+from app.api.admin_sources import (   
+    router as admin_sources_router,
+)
+from app.api.audit import router as audit_router   
+from app.api.buyers import router as buyers_router   
+from app.api.registration import (   
+    router as registration_router,
+)
+import app.models 
+ 
 
-# Import des modèles pour enregistrer Base.metadata.
-# Alembic utilise aussi ces imports dans env.py.
-from app.models import (  # noqa: F401
-    audit_log,
-    commercial,
-    configuration,
-    known_buyer,
-    pipeline_log,
-    sent_log,
-    sotradies,
-    system_action_log,
-    user,
+
+
+# ---------------------------------------------------------------------------
+# Application FastAPI
+# ---------------------------------------------------------------------------
+
+app = FastAPI(
+    title=settings.APP_NAME,
+)
+
+app.state.limiter = limiter
+
+app.add_exception_handler(
+    RateLimitExceeded,
+    _rate_limit_exceeded_handler,
 )
 
 
-app = FastAPI(title=settings.APP_NAME)
-
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
+# ---------------------------------------------------------------------------
+# En-têtes de sécurité
+# ---------------------------------------------------------------------------
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Ajoute les en-têtes HTTP de sécurité sur toutes les réponses."""
@@ -62,9 +108,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Referrer-Policy"] = (
+            "strict-origin-when-cross-origin"
+        )
         response.headers["Permissions-Policy"] = (
-            "camera=(), microphone=(), geolocation=(), payment=()"
+            "camera=(), "
+            "microphone=(), "
+            "geolocation=(), "
+            "payment=()"
         )
 
         if settings.ENV.lower() == "production":
@@ -87,8 +138,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+# ---------------------------------------------------------------------------
+# Middlewares
+# ---------------------------------------------------------------------------
+
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(SlowAPIMiddleware)
+app = FastAPI(title=settings.APP_NAME)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -98,16 +154,26 @@ app.add_middleware(
 )
 
 
+# ---------------------------------------------------------------------------
+# Démarrage
+# ---------------------------------------------------------------------------
+
 @app.on_event("startup")
 async def startup_event():
-    # Le schéma est géré par Alembic :
-    #   alembic upgrade head
-    # Ici on initialise uniquement la configuration métier par défaut
-    # si elle n'existe pas encore.
+    """
+    Alembic gère le schéma de la base :
+
+        alembic upgrade head
+
+    Ici, on initialise uniquement la configuration métier par défaut.
+    """
     init_default_configuration()
 
 
+# ---------------------------------------------------------------------------
 # Routes API
+# ---------------------------------------------------------------------------
+
 app.include_router(auth.router, prefix="/api")
 app.include_router(tenders.router, prefix="/api")
 app.include_router(admin_system.router, prefix="/api")
@@ -117,9 +183,16 @@ app.include_router(admin_commercials_router, prefix="/api")
 app.include_router(config_public.router, prefix="/api")
 app.include_router(buyers_router, prefix="/api")
 app.include_router(audit_router, prefix="/api")
+app.include_router(ai_suggest_router, prefix="/api")
+app.include_router(admin_sources_router, prefix="/api")
+app.include_router(registration_router, prefix="/api")
 
 
-@app.get("/health")
+# ---------------------------------------------------------------------------
+# Health check
+# ---------------------------------------------------------------------------
+
+@app.get("/health", tags=["health"])
 def health_check():
     return {
         "status": "ok",
@@ -128,16 +201,33 @@ def health_check():
     }
 
 
-# Serve frontend Vite en production
-FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+# ---------------------------------------------------------------------------
+# Frontend Vite en production
+# ---------------------------------------------------------------------------
+
+FRONTEND_DIST = (
+    Path(__file__).resolve().parents[2]
+    / "frontend"
+    / "dist"
+)
+
 
 if FRONTEND_DIST.is_dir():
 
-    @app.get("/{full_path:path}", include_in_schema=False)
+    @app.get(
+        "/{full_path:path}",
+        include_in_schema=False,
+    )
     def serve_frontend(full_path: str):
+        frontend_root = FRONTEND_DIST.resolve()
         candidate = (FRONTEND_DIST / full_path).resolve()
 
-        if FRONTEND_DIST.resolve() in candidate.parents and candidate.is_file():
+        if (
+            frontend_root in candidate.parents
+            and candidate.is_file()
+        ):
             return FileResponse(candidate)
 
-        return FileResponse(FRONTEND_DIST / "index.html")
+        return FileResponse(
+            FRONTEND_DIST / "index.html"
+        )

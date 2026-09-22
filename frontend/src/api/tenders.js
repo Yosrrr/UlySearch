@@ -25,5 +25,5 @@ export async function exportTenders(filters, format) {
     params: { ...filters, format },
     responseType: "blob",
   });
-  downloadBlob(response.data, `marches-sotradies.${format}`);
+  downloadBlob(response.data, `appels-offres-tenderscope.${format}`);
 }

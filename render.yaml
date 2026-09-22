@@ -1,20 +1,20 @@
 databases:
-  - name: sotradies-db
+  - name: veilleao-db
     plan: basic-256mb
     region: frankfurt
-    databaseName: sotradies
-    user: sotradies
+    databaseName: veilleao
+    user: veilleao
 
 services:
   - type: keyvalue
-    name: sotradies-redis
+    name: veilleao-redis
     plan: starter
     region: frankfurt
     ipAllowList: []
     maxmemoryPolicy: noeviction
 
   - type: web
-    name: sotradies
+    name: veilleao
     runtime: docker
     plan: starter
     region: frankfurt
@@ -27,17 +27,17 @@ services:
         value: production
       - key: DATABASE_URL
         fromDatabase:
-          name: sotradies-db
+          name: veilleao-db
           property: connectionString
       - key: REDIS_URL
         fromService:
           type: keyvalue
-          name: sotradies-redis
+          name: veilleao-redis
           property: connectionString
       - key: CACHE_REDIS_URL
         fromService:
           type: keyvalue
-          name: sotradies-redis
+          name: veilleao-redis
           property: connectionString
       - key: JWT_SECRET_KEY
         generateValue: true
@@ -46,7 +46,7 @@ services:
       - key: INITIAL_ADMIN_PASSWORD
         sync: false
       - key: INITIAL_ADMIN_NAME
-        value: Administrateur SOTRADIES
+        value: Administrateur VeilleAO
       - key: ADMIN_ALERT_EMAIL
         sync: false
       - key: SMTP_USER
@@ -60,7 +60,7 @@ services:
       
 
   - type: worker
-    name: sotradies-worker
+    name: veilleao-worker
     runtime: docker
     plan: starter
     region: frankfurt
@@ -72,46 +72,46 @@ services:
         value: production
       - key: DATABASE_URL
         fromDatabase:
-          name: sotradies-db
+          name: veilleao-db
           property: connectionString
       - key: REDIS_URL
         fromService:
           type: keyvalue
-          name: sotradies-redis
+          name: veilleao-redis
           property: connectionString
       - key: CACHE_REDIS_URL
         fromService:
           type: keyvalue
-          name: sotradies-redis
+          name: veilleao-redis
           property: connectionString
       - key: JWT_SECRET_KEY
         fromService:
           type: web
-          name: sotradies
+          name: veilleao
           envVarKey: JWT_SECRET_KEY
       - key: SMTP_USER
         fromService:
           type: web
-          name: sotradies
+          name: veilleao
           envVarKey: SMTP_USER
       - key: SMTP_PASSWORD
         fromService:
           type: web
-          name: sotradies
+          name: veilleao
           envVarKey: SMTP_PASSWORD
       - key: SENDER_EMAIL
         fromService:
           type: web
-          name: sotradies
+          name: veilleao
           envVarKey: SENDER_EMAIL
       - key: ADMIN_ALERT_EMAIL
         fromService:
           type: web
-          name: sotradies
+          name: veilleao
           envVarKey: ADMIN_ALERT_EMAIL
 
   - type: worker
-    name: sotradies-scheduler
+    name: veilleao-scheduler
     runtime: docker
     plan: starter
     region: frankfurt
@@ -123,20 +123,20 @@ services:
         value: production
       - key: DATABASE_URL
         fromDatabase:
-          name: sotradies-db
+          name: veilleao-db
           property: connectionString
       - key: REDIS_URL
         fromService:
           type: keyvalue
-          name: sotradies-redis
+          name: veilleao-redis
           property: connectionString
       - key: CACHE_REDIS_URL
         fromService:
           type: keyvalue
-          name: sotradies-redis
+          name: veilleao-redis
           property: connectionString
       - key: JWT_SECRET_KEY
         fromService:
           type: web
-          name: sotradies
+          name: veilleao
           envVarKey: JWT_SECRET_KEY

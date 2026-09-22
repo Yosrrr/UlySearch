@@ -5,6 +5,8 @@ from datetime import datetime
 
 from app.core.database import Base
 
+from sqlalchemy import ForeignKey
+from sqlalchemy.orm import relationship
 
 class Configuration(Base):
     __tablename__ = "configuration"
@@ -30,6 +32,19 @@ class Configuration(Base):
     # }
     categories = Column(JSONB, nullable=False, default=dict)
     
+    
+    company_id = Column(
+        Integer,
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=True,
+        unique=True,
+        index=True,
+    )
+
+    company = relationship(
+        "Company",
+        back_populates="configuration",
+    )
     # Mots-clés d'exclusion (liste simple)
     exclusion_keywords = Column(JSONB, nullable=False, default=list)
     
@@ -44,8 +59,8 @@ class Configuration(Base):
     # ===== Assignation commerciale (Layer 7) =====
     # Format: {
     #   "MATERIEL_ROULANT": ["Ramzi Trabelsi"],
-    #   "ENGINS_TP": ["Zied Hajji"],
-    #   "MANUTENTION": ["Salah Gharbi"],
+    #   "ENGINS_TP": [Ramzi Trabelsi],
+    #   "MANUTENTION": ["Ramzi Trabelsi"],
     #   ...
     # }
     assignment_rules = Column(JSONB, nullable=False, default=dict)

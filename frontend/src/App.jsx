@@ -1,5 +1,7 @@
 // src/App.jsx
 import { Routes, Route, Navigate } from "react-router-dom";
+import RegisterPage from "./pages/RegisterPage";
+import AiOnboardingPage from "./pages/AiOnboardingPage";
 import Sidebar from "./components/layout/Sidebar";
 import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
@@ -42,6 +44,9 @@ export default function App() {
       <Route path="/settings" element={<ProtectedLayout requireSuperadmin><SettingsPage /></ProtectedLayout>} />
       <Route path="/admin" element={<ProtectedLayout requireSuperadmin><AdminPage /></ProtectedLayout>} />
       <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="/ai-config" element={<ProtectedLayout requireSuperadmin><AiOnboardingPage /></ProtectedLayout>} />
+      <Route path="/register" element={<RegisterPage />} />
+
     </Routes>
   );
 }

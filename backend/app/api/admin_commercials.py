@@ -14,6 +14,15 @@ from app.api.deps import require_admin_or_superadmin
 router = APIRouter(prefix="/admin/commercials", tags=["admin-commercials"])
 
 
+def _company_filter(query, user):
+    if user.get("profil") == "superadmin":
+        return query
+    company_id = user.get("company_id")
+    if company_id is None:
+        raise HTTPException(status_code=403, detail="Compte non rattaché à une entreprise.")
+    return query.filter(Commercial.company_id == int(company_id))
+
+
 class CommercialCreate(BaseModel):
     nom: str
     email: EmailStr
@@ -41,7 +50,7 @@ def list_commercials(
     db: Session = Depends(get_db),
     user=Depends(require_admin_or_superadmin),
 ):
-    return db.query(Commercial).order_by(Commercial.nom).all()
+    return _company_filter(db.query(Commercial), user).order_by(Commercial.nom).all()
 
 
 @router.post("", response_model=CommercialOut, status_code=201)
@@ -54,13 +63,20 @@ def create_commercial(
     if not nom:
         raise HTTPException(status_code=400, detail="Le nom est obligatoire.")
 
-    if db.query(Commercial).filter(Commercial.nom == nom).first():
+    query = _company_filter(db.query(Commercial), user)
+    if query.filter(Commercial.nom == nom).first():
         raise HTTPException(status_code=409, detail="Un commercial avec ce nom existe déjà.")
 
-    if db.query(Commercial).filter(Commercial.email == payload.email).first():
+    if query.filter(Commercial.email == payload.email).first():
         raise HTTPException(status_code=409, detail="Un commercial avec cet email existe déjà.")
 
-    row = Commercial(nom=nom, email=payload.email, actif=payload.actif)
+    company_id = None if user.get("profil") == "superadmin" else int(user["company_id"])
+    row = Commercial(
+        nom=nom,
+        email=payload.email,
+        actif=payload.actif,
+        company_id=company_id,
+    )
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -74,7 +90,9 @@ def update_commercial(
     db: Session = Depends(get_db),
     user=Depends(require_admin_or_superadmin),
 ):
-    row = db.query(Commercial).filter_by(id=commercial_id).first()
+    row = _company_filter(db.query(Commercial), user).filter(
+        Commercial.id == commercial_id
+    ).first()
     if not row:
         raise HTTPException(status_code=404, detail="Commercial introuvable.")
 
@@ -96,7 +114,9 @@ def delete_commercial(
     db: Session = Depends(get_db),
     user=Depends(require_admin_or_superadmin),
 ):
-    row = db.query(Commercial).filter_by(id=commercial_id).first()
+    row = _company_filter(db.query(Commercial), user).filter(
+        Commercial.id == commercial_id
+    ).first()
     if not row:
         raise HTTPException(status_code=404, detail="Commercial introuvable.")
 

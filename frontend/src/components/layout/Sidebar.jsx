@@ -1,6 +1,7 @@
 // src/components/layout/Sidebar.jsx
 
 import { NavLink, useNavigate } from "react-router-dom";
+import { Sparkles } from "lucide-react";
 import {
   LayoutDashboard,
   ClipboardList,
@@ -34,6 +35,12 @@ const ITEMS = [
     to: "/buyers",
     label: "Acheteurs",
     icon: Building2,
+  },
+  {
+    to: "/ai-config",
+    label: "Configuration IA",
+    icon: Sparkles,
+    superadminOnly: true,
   },
   {
     to: "/admin",
@@ -78,7 +85,7 @@ export default function Sidebar() {
   <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-lg">
     <img
       src="/logo_sot.png"
-      alt="Sotradies"
+      alt="VeilleAO"
       className="h-full w-full object-contain"
     />
   </div>
@@ -86,7 +93,7 @@ export default function Sidebar() {
 
             <div>
               <p className="font-display text-base font-semibold tracking-tight">
-                SOTRADIES
+                VEILLEAO
               </p>
 
               <p className="text-[10px] font-medium uppercase tracking-wider text-slate-400">
@@ -101,7 +108,8 @@ export default function Sidebar() {
           <p className="mb-3 px-3 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
             Navigation
           </p>
-
+          
+          
           <div className="space-y-1">
             {visibleItems.map(
               ({ to, label, icon: Icon, end }) => (

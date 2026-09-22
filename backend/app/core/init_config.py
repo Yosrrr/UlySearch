@@ -32,7 +32,7 @@ def init_default_configuration():
 
         default_sources = {
             "onmp": {"actif": True, "frequence": "daily"},
-            "appeloffres": {"actif": True, "frequence": "daily"},
+        
             "tuneps": {"actif": False, "frequence": "daily"},
         }
 
