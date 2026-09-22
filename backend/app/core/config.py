@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    APP_NAME: str = "Sotradies - Veille Appels d'Offres"
+    APP_NAME: str = "VeilleAO - Veille Appels d'Offres"
     ENV: str = "development"
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
     ALLOW_PROCESS_CONTROL: bool = False
@@ -34,10 +34,7 @@ class Settings(BaseSettings):
     TUNEPS_USERNAME: str = ""
     TUNEPS_PASSWORD: str = ""
     
-    APPELOFFRES_USERNAME: str = ""
-    APPELOFFRES_PASSWORD: str = ""
-    
-    
+   
     
     DIRECTION_EMAIL: str = ""
 

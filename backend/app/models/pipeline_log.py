@@ -24,7 +24,7 @@ class PipelineLog(Base):
     # Marché concerné si déjà connu/calculé
     tender_id = Column(String(64), nullable=True, index=True)
 
-    # onmp, appeloffres, tuneps, etc.
+    # onmp, tuneps, etc.
     source = Column(String(50), nullable=True, index=True)
 
     # RUN_STARTED, SCRAPE_FINISHED, AI_RESULT, INSERTED, ERROR, etc.

@@ -8,21 +8,26 @@ from sqlalchemy import Boolean, Column, DateTime, Integer, String
 
 from app.core.database import Base
 
-
+from sqlalchemy import ForeignKey, UniqueConstraint
+from sqlalchemy.orm import relationship
 class Commercial(Base):
     __tablename__ = "commercials"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    
+    company_id = Column(
+        Integer,
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
 
-    # Doit correspondre exactement aux noms utilisés dans :
-    # - configuration.categories[...].commercial
-    # - configuration.assignment_rules
-    nom = Column(String(255), nullable=False, unique=True)
-
-    email = Column(String(255), nullable=False, unique=True)
+    # RETIRER unique=True sur nom et email :
+    nom = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False)
 
     actif = Column(Boolean, default=True, nullable=False)
-
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(
         DateTime,
@@ -31,6 +36,16 @@ class Commercial(Base):
         nullable=False,
     )
 
+    company = relationship(
+        "Company",
+        back_populates="commercials",
+    )
+
+    __table_args__ = (
+        # Unicité PAR client, plus globale :
+        UniqueConstraint("company_id", "nom", name="uq_commercial_company_nom"),
+        UniqueConstraint("company_id", "email", name="uq_commercial_company_email"),
+    )
     def __repr__(self) -> str:
         return (
             f"<Commercial id={self.id} nom={self.nom!r} "

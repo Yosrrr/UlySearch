@@ -12,5 +12,5 @@ export async function exportAuditLog(filters, format) {
     params: { ...filters, format },
     responseType: "blob",
   });
-  downloadBlob(response.data, `audit-log-sotradies.${format}`);
+  downloadBlob(response.data,`audit-log-tenderscope.${format}`);
 }

@@ -1,20 +1,16 @@
 """
-Envoi des alertes email aux commerciaux :
-- Alerte instantanée (score > seuil)
-- Digest quotidien
-- Rappels J-3 / J-1
+Envoi des alertes email — version multi-tenant.
 
-Les emails des commerciaux sont désormais lus depuis la table `commercials`
-(base de données) et non plus depuis un dictionnaire statique.
+Chaque client (Company) reçoit des alertes uniquement pour SES
+CompanyTender retenus, envoyées uniquement à SES commerciaux.
 """
-from datetime import datetime, date , UTC
-import email
-import html
+from datetime import datetime, date, UTC
 
 from app.core.templates import jinja_env
-from app.core.commercials import get_email_for_commercial, get_all_active_commercials
-
 from app.core.database import session_scope
+from app.models.company import Company
+from app.models.company_tender import CompanyTender
+from app.models.commercial import Commercial
 from app.models.sotradies import Sotradies
 from app.models.sent_log import SentLog
 from app.services.mailer import send_email
@@ -27,195 +23,202 @@ def is_weekend(d: date | None = None) -> bool:
 
 
 def dispatch_new_tenders(force: bool = False):
-    """Envoie une alerte instantanée pour chaque nouveau marché
-    dont le score dépasse le seuil configuré en administration."""
+    """Alerte instantanée pour chaque CompanyTender retenu au-delà
+    du seuil d'alerte de SA propre configuration client."""
     if is_weekend() and not force:
-        print("[notifier] Week-end : silence radio, aucun envoi.")
-        return
+        print("[notifier] Week-end : pas d'alerte instantanée.")
+        return 0
 
     envoyes = 0
+
     with session_scope() as db:
-        seuil = get_or_create_config(db).score_instant_alert_threshold
-        tenders = db.query(Sotradies).filter(Sotradies.statut == "nouveau").all()
-
-        for t in tenders:
-            if not t.commercial_assigne or not t.score_details:
-                continue
-
-            best_score = max(
-                (v["score"] for v in t.score_details.values()),
-                default=0,
+        matches = (
+            db.query(CompanyTender)
+            .filter(
+                CompanyTender.decision == "retenu",
+                CompanyTender.statut == "nouveau",
+                CompanyTender.commercial_id.isnot(None),
             )
-            if best_score <= seuil:
+            .all()
+        )
+
+        for match in matches:
+            config = get_or_create_config(db, company_id=match.company_id)
+
+            if match.score < config.score_instant_alert_threshold:
                 continue
 
-            already_sent = (
+            already = (
                 db.query(SentLog)
-                .filter_by(sotradies_id=t.id, canal="instantane")
+                .filter_by(company_tender_id=match.id, canal="instantane")
                 .first()
             )
-            if already_sent:
+            if already:
                 continue
 
-            # Email lu depuis la base de données
-            email = get_email_for_commercial(db, t.commercial_assigne)
-            if not email:
+            commercial = (
+                db.query(Commercial)
+                .filter_by(id=match.commercial_id)
+                .first()
+            )
+            # Garde-fou d'isolation : le commercial doit appartenir
+            # au même client que le marché.
+            if commercial is None or commercial.company_id != match.company_id:
+                continue
+            if not commercial.actif:
                 continue
 
-            html = jinja_env.get_template("instant_alert_email.html").render(
-                tender=t,
-                score=best_score,
+            tender = db.query(Sotradies).filter_by(id=match.tender_id).first()
+            if tender is None:
+                continue
+
+            body = jinja_env.get_template("instant_alert_email.html").render(
+                tender=tender, score=match.score,
             )
             success = send_email(
-                email,
-                f"🔴 Offre très pertinente détectée — {t.objet[:60]}",
-                html,
+                commercial.email,
+                f"🔴 Offre très pertinente détectée — {tender.objet[:60]}",
+                body,
             )
             if not success:
-                # Non marqué comme envoyé : sera retenté au prochain passage
                 continue
 
-            db.add(
-                SentLog(
-                    sotradies_id=t.id,
-                    commercial=t.commercial_assigne,
-                    canal="instantane",
-                )
-            )
+            db.add(SentLog(
+                company_tender_id=match.id,
+                commercial=commercial.nom,
+                canal="instantane",
+            ))
             envoyes += 1
-            print(
-                f"[notifier] ✅ Alerte envoyée à {t.commercial_assigne} "
-                f"({email}) — score {best_score}%"
-            )
+            print(f"[notifier] ✅ Alerte → {commercial.nom} ({commercial.email}) — score {match.score}%")
 
     print(f"[notifier] {envoyes} alerte(s) instantanée(s) envoyée(s)")
     return envoyes
 
 
 def send_daily_digest(force: bool = False):
-    """Envoie le récapitulatif quotidien à chaque commercial actif.
-    Même s'il n'y a aucun marché, un email 'Aucun marché' est envoyé.
-    """
+    """Digest quotidien : boucle sur chaque client, puis sur SES
+    commerciaux actifs, avec uniquement SES marchés retenus."""
     if is_weekend() and not force:
         print("[notifier] Week-end : pas de digest.")
-        return
+        return 0
+
+    envoyes = 0
 
     with session_scope() as db:
-        commerciaux = get_all_active_commercials(db)
+        companies = db.query(Company).all()
 
-        if not commerciaux:
-            print("[notifier] ⚠️ Aucun commercial actif en base.")
-            return
-
-        for c in commerciaux:
-            commercial = c.nom
-            email = c.email
-
-            tenders = (
-                db.query(Sotradies)
-                .filter_by(commercial_assigne=commercial, statut="nouveau")
+        for company in companies:
+            commerciaux = (
+                db.query(Commercial)
+                .filter_by(company_id=company.id, actif=True)
                 .all()
             )
 
-            a_envoyer = [
-                t for t in tenders
-                if not db.query(SentLog).filter_by(
-                    sotradies_id=t.id,
-                    commercial=commercial,
-                    canal="digest",
-                ).first()
-                and not db.query(SentLog).filter_by(
-                    sotradies_id=t.id,
-                    commercial=commercial,
-                    canal="instantane",
-                ).first()
-            ]
-
-            # Toujours envoyer, même si a_envoyer == []
-            if a_envoyer:
-                subject = f"Récapitulatif quotidien — {len(a_envoyer)} marché(s)"
-            else:
-                subject = "Récapitulatif quotidien — Aucun marché à traiter"
-
-            html = jinja_env.get_template("digest_email.html").render(
-                tenders=a_envoyer,   # [] est OK
-                commercial=commercial,
-            )
-            success = send_email(email, subject, html)
-            if not success:
-                print(
-                    f"[notifier] ⚠️ Échec digest pour {commercial} ({email}) "
-                    "— retenté au prochain passage"
-                )
-                continue
-
-            # SentLog uniquement s'il y a des marchés (évite le bruit en base)
-            for t in a_envoyer:
-                db.add(
-                    SentLog(
-                        sotradies_id=t.id,
-                        commercial=commercial,
-                        canal="digest",
+            for commercial in commerciaux:
+                matches = (
+                    db.query(CompanyTender)
+                    .filter(
+                        CompanyTender.company_id == company.id,
+                        CompanyTender.commercial_id == commercial.id,
+                        CompanyTender.decision == "retenu",
                     )
+                    .all()
                 )
 
-            if a_envoyer:
-                print(
-                    f"[notifier] ✅ Digest envoyé à {commercial} ({email}) "
-                    f"— {len(a_envoyer)} marché(s)"
+                a_envoyer = [
+                    m for m in matches
+                    if not db.query(SentLog).filter_by(
+                        company_tender_id=m.id, canal="digest"
+                    ).first()
+                    and not db.query(SentLog).filter_by(
+                        company_tender_id=m.id, canal="instantane"
+                    ).first()
+                ]
+
+                if not a_envoyer:
+                    continue
+
+                tender_ids = [m.tender_id for m in a_envoyer]
+                tenders = (
+                    db.query(Sotradies)
+                    .filter(Sotradies.id.in_(tender_ids))
+                    .all()
                 )
-            else:
-                print(
-                    f"[notifier] ✅ Digest 'aucun marché' envoyé à "
-                    f"{commercial} ({email})"
+
+                subject = f"Récapitulatif quotidien — {len(tenders)} marché(s)"
+                body = jinja_env.get_template("digest_email.html").render(
+                    tenders=tenders, commercial=commercial.nom,
                 )
+                success = send_email(commercial.email, subject, body)
+                if not success:
+                    print(f"[notifier] ⚠️ Échec digest {commercial.email}")
+                    continue
+
+                for m in a_envoyer:
+                    db.add(SentLog(
+                        company_tender_id=m.id,
+                        commercial=commercial.nom,
+                        canal="digest",
+                    ))
+
+                envoyes += 1
+                print(f"[notifier] ✅ Digest → {commercial.nom} ({company.nom}) — {len(tenders)} marché(s)")
+
+    print(f"[notifier] {envoyes} digest(s) envoyé(s)")
+    return envoyes
 
 
 def send_reminders(force: bool = False):
-    """Rappel J-3 et J-1 avant la date limite pour les marchés
-    non encore traités. Respecte la règle silence week-end."""
+    """Rappels J-3/J-1 par CompanyTender retenu, non traité."""
     if is_weekend() and not force:
         print("[notifier] Week-end : pas de rappel.")
-        return
+        return 0
 
     today = datetime.now().date()
     envoyes = 0
 
     with session_scope() as db:
-        marches = (
-            db.query(Sotradies)
+        matches = (
+            db.query(CompanyTender)
             .filter(
-                Sotradies.statut == "nouveau",
-                Sotradies.date_limite.isnot(None),
-                Sotradies.commercial_assigne.isnot(None),
+                CompanyTender.decision == "retenu",
+                CompanyTender.commercial_id.isnot(None),
             )
             .all()
         )
 
-        for t in marches:
-            jours_restants = (t.date_limite.date() - today).days
-
-            # Email lu depuis la base de données
-            email = get_email_for_commercial(db, t.commercial_assigne)
-            if not email:
+        for match in matches:
+            tender = db.query(Sotradies).filter_by(id=match.tender_id).first()
+            if tender is None or tender.date_limite is None:
                 continue
 
-            if jours_restants == 3 and not t.rappel_j3_envoye:
-                html = jinja_env.get_template("reminder_email.html").render(
-                    tender=t,
-                    jours_restants=3,
+            commercial = (
+                db.query(Commercial)
+                .filter(
+                    Commercial.id == match.commercial_id,
+                    Commercial.company_id == match.company_id,
                 )
-                if send_email(email, f"⏰ Rappel J-3 — {t.objet[:60]}", html):
-                    t.rappel_j3_envoye = datetime.now(UTC).replace(tzinfo=None)
+                .first()
+            )
+            if commercial is None or not commercial.actif:
+                continue
+
+            jours_restants = (tender.date_limite.date() - today).days
+
+            if jours_restants == 3 and not match.rappel_j3_envoye:
+                body = jinja_env.get_template("reminder_email.html").render(
+                    tender=tender, jours_restants=3,
+                )
+                if send_email(commercial.email, f"⏰ Rappel J-3 — {tender.objet[:60]}", body):
+                    match.rappel_j3_envoye = datetime.now(UTC).replace(tzinfo=None)
                     envoyes += 1
 
-            elif jours_restants == 1 and not t.rappel_j1_envoye:
-                html = jinja_env.get_template("reminder_email.html").render(
-                    tender=t,
-                    jours_restants=1,
+            elif jours_restants == 1 and not match.rappel_j1_envoye:
+                body = jinja_env.get_template("reminder_email.html").render(
+                    tender=tender, jours_restants=1,
                 )
-                if send_email(email, f"⏰ Rappel J-1 (urgent) — {t.objet[:60]}", html):
-                    t.rappel_j1_envoye = datetime.now(UTC).replace(tzinfo=None)
+                if send_email(commercial.email, f"⏰ Rappel J-1 (urgent) — {tender.objet[:60]}", body):
+                    match.rappel_j1_envoye = datetime.now(UTC).replace(tzinfo=None)
                     envoyes += 1
 
     print(f"[notifier] {envoyes} rappel(s) envoyé(s)")

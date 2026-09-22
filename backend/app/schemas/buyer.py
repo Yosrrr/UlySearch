@@ -3,6 +3,7 @@ from pydantic import BaseModel
 
 class BuyerOut(BaseModel):
     id: int
+    company_id: int | None
     nom_acheteur: str
     variantes: str | None
     client_sotradies: str

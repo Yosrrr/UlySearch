@@ -3,7 +3,7 @@ import axios from "axios";
 
 const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "/api",
-  timeout: 10000,
+  timeout: 120000,
   withCredentials: true, // S8 : envoie automatiquement le cookie httpOnly
 });
 
@@ -13,10 +13,13 @@ const apiClient = axios.create({
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      // Session expirée ou révoquée côté serveur
+   if (error.response?.status === 401) {
+      localStorage.removeItem("veilleao_user");
       localStorage.removeItem("sotradies_user");
-      if (window.location.pathname !== "/login") {
+      if (
+        !window.location.pathname.includes("/register") &&
+        !window.location.pathname.includes("/login")
+      ) {
         window.location.href = "/login";
       }
     }

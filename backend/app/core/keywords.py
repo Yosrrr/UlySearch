@@ -25,7 +25,7 @@ CATEGORIES = {
         ],
     },
     "ENGINS_TP": {
-        "commercial": "Zied Hajji",
+        "commercial": "Ramzi Trabelsi",
         "marques": ["CASE", "HAMM", "Wirtgen", "Kleemann", "Schwing Stetter"],
         "keywords": [
             "tractopelle", "chargeuse", "pelle hydraulique", "niveleuse",
@@ -34,7 +34,7 @@ CATEGORIES = {
         ],
     },
     "MANUTENTION": {
-        "commercial": "Salah Gharbi",
+        "commercial": "Ramzi Trabelsi",
         "marques": ["Hyster", "CG Est Manutention"],
         "keywords": [
             "chariot", "chariot elevateur", "transpalette",

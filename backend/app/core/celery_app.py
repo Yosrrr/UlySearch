@@ -22,4 +22,4 @@ celery_app.conf.update(
 
 celery_app.autodiscover_tasks(["app.workers"])
 
-from app.core import scheduler  # noqa: E402,F401 - enregistre celery_app.conf.beat_schedule
+from app.core import scheduler    

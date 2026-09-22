@@ -93,7 +93,12 @@ def _extract_buyers_from_text(text: str) -> list[dict]:
     return all_buyers
 
 
-def import_buyers_from_scan(db: Session, file_bytes: bytes, filename: str) -> dict:
+def import_buyers_from_scan(
+    db: Session,
+    file_bytes: bytes,
+    filename: str,
+    company_id: int | None = None,
+) -> dict:
     """Point d'entrée principal, appelé par la route API.
     Fusionne avec la base existante (ne supprime rien), contrairement à
     l'import Excel qui remplace tout."""
@@ -105,7 +110,12 @@ def import_buyers_from_scan(db: Session, file_bytes: bytes, filename: str) -> di
         }
 
     raw_buyers = _extract_buyers_from_text(text)
-    known_buyers = db.query(KnownBuyer).all()
+    query = db.query(KnownBuyer)
+    if company_id is None:
+        query = query.filter(KnownBuyer.company_id.is_(None))
+    else:
+        query = query.filter(KnownBuyer.company_id == company_id)
+    known_buyers = query.all()
 
     crees, fusionnes, ignores = 0, 0, 0
 
@@ -137,6 +147,7 @@ def import_buyers_from_scan(db: Session, file_bytes: bytes, filename: str) -> di
             fusionnes += 1
         else:
             new_buyer = KnownBuyer(
+                company_id=company_id,
                 nom_acheteur=nom,
                 variantes=entry.get("variantes"),
                 client_sotradies=entry.get("client_sotradies") or "Non",

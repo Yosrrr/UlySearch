@@ -7,11 +7,18 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.api.deps import require_superadmin
+from app.api.deps import require_admin_or_superadmin
 from app.models.configuration import Configuration
 from app.services.config_service import get_or_create_config
 
 router = APIRouter(prefix="/admin/config", tags=["admin-config"])
+
+
+def _config_for_user(db: Session, user: dict):
+    return get_or_create_config(
+        db,
+        company_id=None if user.get("profil") == "superadmin" else user.get("company_id"),
+    )
 
 
 # ===== Schemas Pydantic =====
@@ -56,9 +63,9 @@ class ConfigurationResponse(BaseModel):
 # ===== Endpoints =====
 
 @router.get("")
-def get_configuration(db: Session = Depends(get_db), user: dict = Depends(require_superadmin)):
+def get_configuration(db: Session = Depends(get_db), user: dict = Depends(require_admin_or_superadmin)):
     """Récupère la configuration actuelle."""
-    config = get_or_create_config(db)
+    config = _config_for_user(db, user)
     return ConfigurationResponse.from_orm(config)
 
 
@@ -66,10 +73,10 @@ def get_configuration(db: Session = Depends(get_db), user: dict = Depends(requir
 def update_thresholds(
     payload: ThresholdsUpdate,
     db: Session = Depends(get_db),
-    user: dict = Depends(require_superadmin)
+    user: dict = Depends(require_admin_or_superadmin)
 ):
     """Met à jour les seuils de pertinence."""
-    config = get_or_create_config(db)
+    config = _config_for_user(db, user)
 
     if payload.score_decision_threshold is not None:
         if not (0 <= payload.score_decision_threshold <= 100):
@@ -93,10 +100,10 @@ def update_thresholds(
 def update_categories(
     payload: CategoriesUpdate,
     db: Session = Depends(get_db),
-    user: dict = Depends(require_superadmin)
+    user: dict = Depends(require_admin_or_superadmin)
 ):
     """Met à jour les catégories et leurs mots-clés."""
-    config = get_or_create_config(db)
+    config = _config_for_user(db, user)
 
     config.categories = payload.categories
     config.derniere_modification = datetime.now(UTC).replace(tzinfo=None)
@@ -111,10 +118,10 @@ def update_categories(
 def update_exclusion_keywords(
     payload: ExclusionKeywordsUpdate,
     db: Session = Depends(get_db),
-    user: dict = Depends(require_superadmin)
+    user: dict = Depends(require_admin_or_superadmin)
 ):
     """Met à jour la liste des mots-clés d'exclusion."""
-    config = get_or_create_config(db)
+    config = _config_for_user(db, user)
 
     config.exclusion_keywords = payload.exclusion_keywords
     config.derniere_modification = datetime.now(UTC).replace(tzinfo=None)
@@ -129,10 +136,10 @@ def update_exclusion_keywords(
 def update_sources(
     payload: SourcesUpdate,
     db: Session = Depends(get_db),
-    user: dict = Depends(require_superadmin)
+    user: dict = Depends(require_admin_or_superadmin)
 ):
     """Met à jour l'activation des sources de scraping."""
-    config = get_or_create_config(db)
+    config = _config_for_user(db, user)
 
     config.active_sources = payload.active_sources
     config.derniere_modification = datetime.now(UTC).replace(tzinfo=None)
@@ -147,10 +154,10 @@ def update_sources(
 def update_assignment_rules(
     payload: AssignmentRulesUpdate,
     db: Session = Depends(get_db),
-    user: dict = Depends(require_superadmin)
+    user: dict = Depends(require_admin_or_superadmin)
 ):
     """Met à jour les règles d'assignation commerciale."""
-    config = get_or_create_config(db)
+    config = _config_for_user(db, user)
 
     config.assignment_rules = payload.assignment_rules
     config.derniere_modification = datetime.now(UTC).replace(tzinfo=None)

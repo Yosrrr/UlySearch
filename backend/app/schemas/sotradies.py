@@ -12,4 +12,4 @@ class SotradiesRaw(BaseModel):
     date_limite: Optional[datetime] = None
     budget_estime: Optional[float] = None
     source: str
-    lien: str
+    lien: Optional[str] = None  

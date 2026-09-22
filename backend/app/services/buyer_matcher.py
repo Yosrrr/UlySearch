@@ -116,12 +116,25 @@ def find_matching_buyer(
             db.close()
 
 
-def match_buyer(acheteur_scrape: str) -> str | None:
+def match_buyer(
+    acheteur_scrape: str,
+    company_id: int | None = None,
+) -> str | None:
     """
     Fonction historique utilisée par le pipeline.
     Retourne uniquement le statut client : "Oui", "Non" ou None.
     """
-    best_kb = find_matching_buyer(acheteur_scrape)
+    known_buyers = None
+    if company_id is not None:
+        db = SessionLocal()
+        try:
+            known_buyers = db.query(KnownBuyer).filter(
+                KnownBuyer.company_id == company_id
+            ).all()
+        finally:
+            db.close()
+
+    best_kb = find_matching_buyer(acheteur_scrape, known_buyers)
     return best_kb.client_sotradies if best_kb else None
 
 

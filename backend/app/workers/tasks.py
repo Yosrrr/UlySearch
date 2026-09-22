@@ -50,3 +50,48 @@ def send_periodic_report_task():
     """Rapport périodique à la direction (Layer 9 du CdC)."""
     return send_periodic_report()
 
+
+@celery_app.task(name="tasks.test_single_source")
+def test_single_source(source_id: int):
+    """Test de scraping d'une seule source (appelé depuis l'admin)."""
+    from app.core.database import session_scope
+    from app.models.scraping_source import ScrapingSource
+    from app.services.scrapers.universal_scraper import UniversalScraper
+    from datetime import datetime
+
+    with session_scope() as db:
+        source = db.query(ScrapingSource).filter_by(id=source_id).first()
+        if not source:
+            return {"error": f"Source {source_id} introuvable"}
+
+        scraper = UniversalScraper(
+            source_name=f"test_{source.id}",
+            url=source.url,
+            use_browser=source.use_browser or False,
+            max_pages=1,  # 1 seule page pour le test
+        )
+
+        try:
+            tenders = scraper.fetch_tenders()
+            source.last_scraped = datetime.utcnow()
+            source.last_result_count = len(tenders)
+            source.last_error = None
+
+            return {
+                "source": source.nom,
+                "url": source.url,
+                "status": "success",
+                "count": len(tenders),
+                "apercu": [
+                    {
+                        "objet": t.objet[:100] if t.objet else None,
+                        "acheteur": t.acheteur,
+                        "reference": t.reference,
+                    }
+                    for t in tenders[:5]
+                ],
+            }
+        except Exception as e:
+            source.error_count = (source.error_count or 0) + 1
+            source.last_error = str(e)[:500]
+            return {"source": source.nom, "error": str(e)}

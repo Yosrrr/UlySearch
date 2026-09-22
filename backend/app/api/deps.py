@@ -41,6 +41,7 @@ def get_current_user(
 
     payload["profil"] = user.profil
     payload["nom"] = user.nom
+    payload["company_id"] = getattr(user, "company_id", None)
     return payload
 
 

@@ -1,65 +1,57 @@
-"""
-Alembic environment configuration.
-Utilise la même DATABASE_URL que l'application, importe tous les modèles
-SQLAlchemy pour l'autogenerate, et supporte les migrations online et offline.
-"""
-from logging.config import fileConfig
+"""Configuration de l'environnement Alembic."""
+
 import sys
+from logging.config import fileConfig
 from pathlib import Path
-from app.models import (
-    user,
-    sotradies,
-    sent_log,
-    audit_log,
-    known_buyer,
-    system_action_log,
-    configuration,
-    commercial,
-    pipeline_log,  # ← ajouter
-)
 
-from sqlalchemy import engine_from_config, pool
 from alembic import context
+from sqlalchemy import engine_from_config, pool
 
-# Ajouter le dossier parent (backend/) au path pour importer app.*
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.core.config import settings
-from app.core.database import Base
+# Ajouter backend/ au chemin avant les imports app.*
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
-# Import de TOUS les modèles — obligatoire pour que Base.metadata les connaisse
-from app.models import (
-    user,
-    sotradies,
-    sent_log,
-    audit_log,
-    known_buyer,
-    system_action_log,
-    configuration,
-)
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
-# Configuration Alembic
+
+from app.core.config import settings     
+from app.core.database import Base     
+
+import app.models 
+
+# À ajouter dès que ces modèles existent :
+# from app.models import company_source     
+# from app.models import company_tender     
+
+
+
 config = context.config
 
-# Surcharge de l'URL DB depuis settings (au lieu de alembic.ini)
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+config.set_main_option(
+    "sqlalchemy.url",
+    settings.DATABASE_URL,
+)
 
-# Logging
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Metadata cible pour autogenerate
 target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
-    """Mode offline : génère le SQL sans connexion réelle à la DB."""
-    url = config.get_main_option("sqlalchemy.url")
+    url = config.get_main_option(
+        "sqlalchemy.url"
+    )
+
     context.configure(
         url=url,
         target_metadata=target_metadata,
         literal_binds=True,
-        dialect_opts={"paramstyle": "named"},
+        dialect_opts={
+            "paramstyle": "named",
+        },
+        compare_type=True,
     )
 
     with context.begin_transaction():
@@ -67,15 +59,21 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Mode online : exécute les migrations directement sur la DB."""
     connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        config.get_section(
+            config.config_ini_section,
+            {},
+        ),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+        )
 
         with context.begin_transaction():
             context.run_migrations()

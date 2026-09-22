@@ -9,7 +9,7 @@ export function AuthProvider({ children }) {
   // pour un affichage instantané. Le token, lui, vit dans un cookie httpOnly
   // que le JS ne peut pas lire — c'est le but de S8.
   const [user, setUser] = useState(() => {
-    const raw = localStorage.getItem("sotradies_user");
+    const raw = localStorage.getItem("veilleao_user") || localStorage.getItem("sotradies_user");
     return raw ? JSON.parse(raw) : null;
   });
   const [authReady, setAuthReady] = useState(false);
@@ -20,12 +20,13 @@ export function AuthProvider({ children }) {
     apiClient
       .get("/auth/me")
       .then(({ data }) => {
-        localStorage.setItem("sotradies_user", JSON.stringify(data.user));
+        localStorage.setItem("veilleao_user", JSON.stringify(data.user));
         setUser(data.user);
       })
       .catch((error) => {
         // 401 = pas de session valide (cookie absent/expiré)
         if (error.response?.status === 401) {
+          localStorage.removeItem("veilleao_user");
           localStorage.removeItem("sotradies_user");
           setUser(null);
         }
@@ -39,7 +40,7 @@ export function AuthProvider({ children }) {
   const signIn = useCallback(async (email, password) => {
     const { data } = await apiClient.post("/auth/login", { email, password });
     // Plus de token à stocker : le serveur l'a posé en cookie httpOnly
-    localStorage.setItem("sotradies_user", JSON.stringify(data.user));
+    localStorage.setItem("veilleao_user", JSON.stringify(data.user));
     setUser(data.user);
     return data;
   }, []);
