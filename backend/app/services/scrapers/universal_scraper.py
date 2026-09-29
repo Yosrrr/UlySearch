@@ -16,6 +16,7 @@ Interface identique à OnmpScraper / TunepsScraper :
     UniversalScraper(source_name, url, use_browser, max_pages).fetch_tenders()
 """
 import ast
+import re as _re
 import asyncio
 import inspect
 import os
@@ -663,6 +664,9 @@ def _extract_dates(context: str) -> tuple[Optional[datetime], Optional[datetime]
 def _raw_from_link(link_data: dict, source_name: str, default_buyer: str) -> Optional[SotradiesRaw]:
     title = _compact(link_data["text"])
     context = _compact(link_data["context"])
+
+    # Supprimer les préfixes parasites type "CO ", "BA ", "IN "
+    title = re.sub(r"^[A-Z]{2,4}\s+", "", title).strip()
 
     if len(title) < 15 and len(context) >= 15:
         title = context[:200]
