@@ -296,7 +296,7 @@ def update_source(
     source_id: int,
     payload: SourceUpdate,
     db: Session = Depends(get_db),
-    user=Depends(require_superadmin),
+    user=Depends(require_admin_or_superadmin),
 ):
     source = _visible_source(db, source_id, None)
 
