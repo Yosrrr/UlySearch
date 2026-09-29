@@ -1,17 +1,19 @@
 // src/App.jsx
+import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
-import RegisterPage from "./pages/RegisterPage";
-import AiOnboardingPage from "./pages/AiOnboardingPage";
 import Sidebar from "./components/layout/Sidebar";
-import LoginPage from "./pages/LoginPage";
-import DashboardPage from "./pages/DashboardPage";
-import TendersPage from "./pages/TendersPage";
-import RejectedTendersPage from "./pages/RejectedTendersPage";
-import BuyersPage from "./pages/BuyersPage";
-import SettingsPage from "./pages/SettingsPage";
-import TenderDetailPage from "./pages/TenderDetailPage";
-import AdminPage from "./pages/AdminPage";
 import { useAuth } from "./context/AuthContext";
+
+const RegisterPage = lazy(() => import("./pages/RegisterPage"));
+const AiOnboardingPage = lazy(() => import("./pages/AiOnboardingPage"));
+const LoginPage = lazy(() => import("./pages/LoginPage"));
+const DashboardPage = lazy(() => import("./pages/DashboardPage"));
+const TendersPage = lazy(() => import("./pages/TendersPage"));
+const RejectedTendersPage = lazy(() => import("./pages/RejectedTendersPage"));
+const BuyersPage = lazy(() => import("./pages/BuyersPage"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage"));
+const TenderDetailPage = lazy(() => import("./pages/TenderDetailPage"));
+const AdminPage = lazy(() => import("./pages/AdminPage"));
 
 function ProtectedLayout({ children, requireSuperadmin = false }) {
   const { isAuthenticated, user, authReady } = useAuth();
@@ -34,7 +36,8 @@ function ProtectedLayout({ children, requireSuperadmin = false }) {
 
 export default function App() {
   return (
-    <Routes>
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-500">Chargement...</div>}>
+      <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/" element={<ProtectedLayout><DashboardPage /></ProtectedLayout>} />
       <Route path="/tenders" element={<ProtectedLayout><TendersPage /></ProtectedLayout>} />
@@ -47,6 +50,7 @@ export default function App() {
       <Route path="/ai-config" element={<ProtectedLayout requireSuperadmin><AiOnboardingPage /></ProtectedLayout>} />
       <Route path="/register" element={<RegisterPage />} />
 
-    </Routes>
+      </Routes>
+    </Suspense>
   );
 }

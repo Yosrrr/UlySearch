@@ -1,7 +1,9 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class BuyerOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     company_id: int | None
     nom_acheteur: str
@@ -9,8 +11,6 @@ class BuyerOut(BaseModel):
     client_sotradies: str
     notes: str | None
 
-    class Config:
-        from_attributes = True
 
 
 class BuyerCreate(BaseModel):

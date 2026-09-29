@@ -11,4 +11,6 @@ limiter = Limiter(
     key_func=get_remote_address,
     default_limits=["200/minute"],           # limite globale
     storage_uri=settings.CACHE_REDIS_URL,    # utilise bien CACHE_REDIS_URL
+    swallow_errors=True,
+    in_memory_fallback_enabled=True,
 )

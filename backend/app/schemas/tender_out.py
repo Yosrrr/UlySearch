@@ -55,6 +55,7 @@ class TenderOut(BaseModel):
 
     # Identifiant interne CompanyTender (utile pour PATCH côté client)
     company_tender_id: int | None = None
+    feedback: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -74,13 +75,18 @@ def _best_from_details(score_details: dict | None) -> tuple[str | None, int]:
     return best_cat, best_score
 
 
-def _rejection_reason(score: int, decision: str | None) -> str | None:
-    if decision == "retenu" or score > 0:
+def _rejection_reason(score: int, decision: str | None, score_details: dict | None = None) -> str | None:
+    # Seuls les marchés rejetés par le moteur d'un client ont une raison.
+    # Vue superadmin (decision=None) : pas de score global, donc pas de raison.
+    if decision != "rejete":
         return None
-    if score == 0:
+    for data in (score_details or {}).values():
+        if isinstance(data, dict) and data.get("methode") == "exclusion":
+            mot = data.get("mot_exclusion")
+            return f"Mot d'exclusion détecté : {mot}" if mot else "Mot d'exclusion détecté"
+    if score <= 0:
         return "Aucun mot-clé métier détecté"
     return f"Score de pertinence insuffisant ({score}%)"
-
 
 def to_tender_out_from_sotradies(t) -> TenderOut:
     """Vue superadmin / brute : score depuis Sotradies.score_details."""
@@ -126,18 +132,22 @@ def to_tender_out_from_match(match, tender, commercial_nom: str | None = None) -
     best_cat, best_score = _best_from_details(score_details)
 
     # Preferer le score stocke sur CompanyTender
-    score = int(match.score or best_score or 0)
+    score = int(
+        match.score
+        if match.score is not None
+        else best_score
+    )
     top_cat = match.categorie or best_cat
 
     return TenderOut(
         id=tender.id,
         objet=tender.objet,
         acheteur=tender.acheteur,
-        categorie=tender.categorie,
+        categorie=top_cat,
         top_categorie=top_cat,
         score=score,
         score_details=score_details,
-        raison_rejet=_rejection_reason(score, match.decision),
+        raison_rejet=_rejection_reason(score, match.decision, score_details),
         decision=match.decision,
         statut=match.statut,
         commercial_assigne=commercial_nom,
@@ -159,6 +169,7 @@ def to_tender_out_from_match(match, tender, commercial_nom: str | None = None) -
         lieu_ouverture_offres=tender.lieu_ouverture_offres,
         caractere_prix=tender.caractere_prix,
         company_tender_id=match.id,
+        feedback=match.feedback,
     )
 
 

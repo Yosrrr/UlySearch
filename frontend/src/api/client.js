@@ -14,7 +14,7 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
    if (error.response?.status === 401) {
-      localStorage.removeItem("veilleao_user");
+      localStorage.removeItem("UlySearch_user");
       localStorage.removeItem("sotradies_user");
       if (
         !window.location.pathname.includes("/register") &&
@@ -26,5 +26,15 @@ apiClient.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+apiClient.interceptors.request.use((config) => {
+  const companyId = localStorage.getItem("settings_company_id");
+  if (companyId) {
+    config.headers["X-Company-ID"] = companyId;
+  } else if (config.headers["X-Company-ID"]) {
+    delete config.headers["X-Company-ID"];
+  }
+  return config;
+});
 
 export default apiClient;

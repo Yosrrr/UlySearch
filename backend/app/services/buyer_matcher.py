@@ -119,18 +119,27 @@ def find_matching_buyer(
 def match_buyer(
     acheteur_scrape: str,
     company_id: int | None = None,
+    known_buyers: list[KnownBuyer] | None = None,
 ) -> str | None:
     """
-    Fonction historique utilisée par le pipeline.
-    Retourne uniquement le statut client : "Oui", "Non" ou None.
+    Retourne "Oui" | "Non" | None.
+
+    company_id est OBLIGATOIRE : sans lui, on chargerait le referentiel
+    de tous les clients (violation de l'isolation multi-tenant).
     """
-    known_buyers = None
-    if company_id is not None:
+    if company_id is None and known_buyers is None:
+        raise ValueError(
+            "match_buyer : company_id obligatoire (isolation multi-tenant)."
+        )
+
+    if known_buyers is None:
         db = SessionLocal()
         try:
-            known_buyers = db.query(KnownBuyer).filter(
-                KnownBuyer.company_id == company_id
-            ).all()
+            known_buyers = (
+                db.query(KnownBuyer)
+                .filter(KnownBuyer.company_id == company_id)
+                .all()
+            )
         finally:
             db.close()
 

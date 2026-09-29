@@ -1,25 +1,55 @@
-"""
-Scoring de pertinence par mots-clés (Layer 4, Tier 1) — par catégorie,
-avec assignation commerciale directement issue de la même table dynamique.
-"""
-from unidecode import unidecode
+"""Moteur robuste de classification et d'exclusion par mots-clés (mot entier, pluriels, sans accents)."""
+import re
+from functools import lru_cache
+
 from rapidfuzz import fuzz
-from app.schemas.sotradies import SotradiesRaw
+from unidecode import unidecode
 
 
-def _normalize(text: str) -> str:
-    return unidecode(text or "").lower()
+def normalize_text(value) -> str:
+    text = unidecode(str(value or "")).lower()
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return " ".join(text.split())
 
 
-def score_for_category(tender: SotradiesRaw, category: str, dynamic_categories: dict, dynamic_exclusions: list[str]) -> tuple[int, list[str]]:
-    text = _normalize(tender.objet) + " " + _normalize(tender.categorie or "")
+@lru_cache(maxsize=4096)
+def _keyword_pattern(keyword: str):
+    tokens = normalize_text(keyword).split()
+    if not tokens:
+        return None
+    # Ajoute une tolérance pour les pluriels (-s, -x, -es)
+    parts = [re.escape(token) + r"(?:s|x|es)?" for token in tokens]
+    # (?<![a-z0-9]) et (?![a-z0-9]) garantissent qu'on matche le mot entier
+    return re.compile(r"(?<![a-z0-9])" + r"\s+".join(parts) + r"(?![a-z0-9])")
 
-    if any(_normalize(kw) in text for kw in dynamic_exclusions):
+
+def contains_keyword(text, keyword) -> bool:
+    if not isinstance(keyword, str):
+        return False
+    pattern = _keyword_pattern(keyword)
+    return bool(pattern and pattern.search(normalize_text(text)))
+
+
+def first_matching_keyword(text, keywords) -> str | None:
+    normalized = normalize_text(text)
+    for keyword in keywords or []:
+        if not isinstance(keyword, str):
+            continue
+        pattern = _keyword_pattern(keyword)
+        if pattern and pattern.search(normalized):
+            return keyword
+    return None
+
+
+def score_for_category(tender, category: str, dynamic_categories: dict, dynamic_exclusions: list[str]) -> tuple[int, list[str]]:
+    text = (getattr(tender, "objet", "") or "") + " " + (getattr(tender, "categorie", "") or "")
+    
+    if first_matching_keyword(text, dynamic_exclusions):
         return 0, []
 
     category_data = dynamic_categories.get(category, {})
     keywords = category_data.get("keywords", [])
-    matches = [kw for kw in keywords if _normalize(kw) in text]
+    matches = [kw for kw in keywords if contains_keyword(text, kw)]
 
     if not matches:
         return 0, []
@@ -28,8 +58,7 @@ def score_for_category(tender: SotradiesRaw, category: str, dynamic_categories: 
     return score, matches
 
 
-def score_all_categories(tender: SotradiesRaw, dynamic_categories: dict, dynamic_exclusions: list[str]) -> dict:
-    """Retourne le détail complet du scoring, prêt à stocker dans score_details."""
+def score_all_categories(tender, dynamic_categories: dict, dynamic_exclusions: list[str]) -> dict:
     result = {}
     for category in dynamic_categories:
         score, matches = score_for_category(tender, category, dynamic_categories, dynamic_exclusions)
@@ -37,42 +66,21 @@ def score_all_categories(tender: SotradiesRaw, dynamic_categories: dict, dynamic
     return result
 
 
-def best_category(score_details: dict) -> tuple[str | None, int]:
-    """Retourne la catégorie au meilleur score, et ce score."""
-    best_cat, best_score = None, 0
-    for cat, data in score_details.items():
-        if data["score"] > best_score:
-            best_cat, best_score = cat, data["score"]
-    return best_cat, best_score
-
-
-MIN_FUZZY_FOR_AI = 55  # en dessous : trop éloigné, pas la peine de solliciter l'IA
-
-
 def _best_fuzzy_score(text: str, dynamic_categories: dict) -> int:
-    """Meilleure similarité floue entre l'objet du marché et n'importe quel
-    mot-clé, toutes catégories confondues."""
-    normalized_text = _normalize(text)
+    normalized_text = normalize_text(text)
     best = 0
     for cat_data in dynamic_categories.values():
         for kw in cat_data.get("keywords", []):
-            score = fuzz.partial_ratio(_normalize(kw), normalized_text)
+            score = fuzz.partial_ratio(normalize_text(kw), normalized_text)
             if score > best:
                 best = score
     return best
 
 
 def needs_ai_fallback(tender, score_details: dict, dynamic_categories: dict, dynamic_exclusions: list[str]) -> bool:
-    """
-    Cas ambigu = AUCUNE catégorie n'a matché par mots-clés exacts (Tier 1),
-    ET ce n'est pas un cas d'exclusion déjà tranché avec confiance,
-    ET il existe une ressemblance floue suffisante pour justifier l'IA.
-    """
-    if any(d["score"] > 0 for d in score_details.values()):
-        return False  # une règle a déjà tranché avec confiance
-
-    text = _normalize(tender.objet)
-    if any(_normalize(kw) in text for kw in dynamic_exclusions):
-        return False  # déjà identifié hors-secteur avec confiance, pas besoin d'IA
-
-    return _best_fuzzy_score(tender.objet, dynamic_categories) >= MIN_FUZZY_FOR_AI
+    if any(d.get("score", 0) > 0 for d in score_details.values()):
+        return False
+    text = getattr(tender, "objet", "") or ""
+    if first_matching_keyword(text, dynamic_exclusions):
+        return False
+    return _best_fuzzy_score(text, dynamic_categories) >= 70

@@ -5,8 +5,9 @@ API des marchés — multi-tenant.
 - superadmin    : lit les offres brutes Sotradies (vue plateforme)
 """
 from datetime import UTC, datetime
-
+from sqlalchemy import func
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -30,6 +31,10 @@ router = APIRouter(prefix="/tenders", tags=["tenders"])
 CLIENT_STATUTS = {"nouveau", "en_cours", "sans_suite", "gagne", "perdu"}
 # Statuts autorisés côté superadmin (vue brute legacy)
 SUPERADMIN_STATUTS = {"nouveau", "retenu", "sans_suite"}
+
+
+class TenderFeedbackUpdate(BaseModel):
+    feedback: str
 
 
 def _is_superadmin(user: dict) -> bool:
@@ -62,12 +67,29 @@ def _filtered_for_client(
     categorie: str | None,
     score_min: int | None,
     include_rejected: bool,
+    *,
+    user: dict,
 ) -> list[TenderOut]:
     query = (
         db.query(CompanyTender, Sotradies)
         .join(Sotradies, Sotradies.id == CompanyTender.tender_id)
         .filter(CompanyTender.company_id == company_id)
     )
+    if user.get("profil") == "commercial":
+        email_connecte = str(user.get("sub") or "").strip().lower()
+        moi = (
+            db.query(Commercial)
+            .filter(
+                Commercial.company_id == company_id,
+                func.lower(Commercial.email) == email_connecte,
+                Commercial.actif.is_(True),
+            )
+            .order_by(Commercial.id)
+            .first()
+        )
+        if moi is None:
+            return []
+        query = query.filter(CompanyTender.commercial_id == moi.id)
 
     if search:
         like = f"%{search}%"
@@ -85,8 +107,9 @@ def _filtered_for_client(
             query = query.filter(CompanyTender.statut == statut)
 
     if not include_rejected and score_min is None and (not statut or statut == "Tous"):
-        # Par défaut : uniquement les marchés retenus par le moteur
-        query = query.filter(CompanyTender.decision == "retenu")
+        # Par défaut : tout marché avec un score > 0
+        # (score = 0 = exclusion ou aucun mot-clé → caché par défaut)
+        query = query.filter(CompanyTender.score > 0)
 
     results = query.order_by(Sotradies.date_detection.desc()).all()
 
@@ -138,8 +161,6 @@ def _filtered_for_superadmin(
 
     if score_min is not None:
         out = [t for t in out if t.score >= score_min]
-    elif not include_rejected:
-        out = [t for t in out if t.score > 0 or t.statut == "retenu"]
 
     if categorie and categorie != "Toutes":
         out = [t for t in out if (t.top_categorie or "") == categorie]
@@ -149,14 +170,14 @@ def _filtered_for_superadmin(
 
 @router.get("", response_model=list[TenderOut])
 def list_tenders(
+    statut: str | None = None,
     search: str | None = Query(None),
     commercial: str | None = Query(None),
-    statut: str | None = Query(None),
     categorie: str | None = Query(None),
     score_min: int | None = Query(None),
     include_rejected: bool = Query(False),
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+     user: dict = Depends(get_current_user),
 ):
     if _is_superadmin(user):
         return _filtered_for_superadmin(
@@ -165,9 +186,9 @@ def list_tenders(
 
     company_id = _require_company_id(user)
     return _filtered_for_client(
-        db, company_id, search, commercial, statut, categorie, score_min, include_rejected
+        db, company_id, search, commercial, statut, categorie, score_min, include_rejected,
+        user=user,
     )
-
 
 @router.get("/export")
 def export_tenders(
@@ -179,7 +200,7 @@ def export_tenders(
     score_min: int | None = Query(None),
     include_rejected: bool = Query(False),
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+    user: dict = Depends(get_current_user),
 ):
     if _is_superadmin(user):
         tenders = _filtered_for_superadmin(
@@ -188,7 +209,8 @@ def export_tenders(
     else:
         company_id = _require_company_id(user)
         tenders = _filtered_for_client(
-            db, company_id, search, commercial, statut, categorie, score_min, include_rejected
+            db, company_id, search, commercial, statut, categorie, score_min, include_rejected,
+            user=user,
         )
 
     date_str = datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%d")
@@ -213,7 +235,7 @@ def export_tenders(
 @router.get("/rejected", response_model=list[TenderOut])
 def list_rejected_tenders(
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+    user: dict = Depends(get_current_user),
 ):
     if _is_superadmin(user):
         results = db.query(Sotradies).order_by(Sotradies.date_detection.desc()).all()
@@ -241,11 +263,50 @@ def list_rejected_tenders(
     ]
 
 
+@router.patch("/{tender_id}/feedback", response_model=TenderOut)
+def update_tender_feedback(
+    tender_id: str,
+    payload: TenderFeedbackUpdate,
+    db: Session = Depends(get_db),
+     user: dict = Depends(get_current_user),
+):
+    if _is_superadmin(user):
+        raise HTTPException(status_code=403, detail="Le feedback est réservé aux clients.")
+    if payload.feedback not in {"pertinent", "pas_pertinent"}:
+        raise HTTPException(status_code=400, detail="Feedback invalide.")
+
+    company_id = _require_company_id(user)
+    row = (
+        db.query(CompanyTender, Sotradies)
+        .join(Sotradies, Sotradies.id == CompanyTender.tender_id)
+        .filter(
+            CompanyTender.company_id == company_id,
+            CompanyTender.tender_id == tender_id,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Marché introuvable")
+
+    match, tender = row
+    match.feedback = payload.feedback
+    match.feedback_at = datetime.now(UTC).replace(tzinfo=None)
+    db.add(AuditLog(
+        sotradies_id=tender_id,
+        utilisateur_email=user.get("sub", "inconnu"),
+        action="feedback",
+        detail=payload.feedback,
+    ))
+    db.commit()
+    db.refresh(match)
+    return to_tender_out_from_match(match, tender, _commercial_name(db, match.commercial_id))
+
+
 @router.get("/{tender_id}", response_model=TenderOut)
 def get_tender(
     tender_id: str,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+     user: dict = Depends(get_current_user),
 ):
     if _is_superadmin(user):
         t = db.query(Sotradies).filter_by(id=tender_id).first()
@@ -285,7 +346,7 @@ def update_tender_status(
     tender_id: str,
     payload: TenderStatusUpdate,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+     user: dict = Depends(get_current_user),
 ):
     if _is_superadmin(user):
         if payload.statut not in SUPERADMIN_STATUTS:

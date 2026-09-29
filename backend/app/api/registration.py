@@ -1,99 +1,152 @@
-"""
-Inscription publique d'un nouveau client — transaction atomique.
+"""Inscription multi-client et catalogue public de sources."""
 
-Crée en une seule opération :
-- User (profil admin)
-- Company
-- Configuration dédiée (company_id)
-- Commercials (company_id)
-- CompanySource (ONMP + TUNEPS + sites choisis)
-"""
-from copy import deepcopy
-from urllib.parse import urlparse
+import re
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, EmailStr, Field
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.rate_limiter import limiter
 from app.core.security import hash_password
-from app.models.commercial import Commercial
 from app.models.company import Company
-from app.models.company_source import CompanySource
+from app.models.commercial import Commercial
 from app.models.configuration import Configuration
-from app.models.scraping_source import ScrapingSource
 from app.models.user import User
+from app.models.company_source import CompanySource
+from app.models.source_account import SourceAccount
+from app.services.source_catalog_service import (
+    get_public_source,
+    list_public_catalog,
+    normalize_source_url,
+    propose_source,
+    subscribe_source,
+)
+from app.services.source_credentials import encrypt_source_password
+
 
 router = APIRouter(prefix="/register", tags=["registration"])
 
+SourceId = Annotated[int, Field(strict=True, ge=1)]
+ShortTerm = Annotated[str, Field(min_length=1, max_length=120)]
 
-# ── Schémas ──────────────────────────────────────────────
 
 class CommercialInput(BaseModel):
-    nom: str
-    email: str
+    model_config = ConfigDict(extra="forbid")
+
+    nom: str = Field(min_length=2, max_length=255)
+    email: EmailStr
 
 
 class CategoryInput(BaseModel):
-    id: str
-    label: str
-    keywords: list[str]
-    marques: list[str] = []
-    commercial: str | None = None
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=2, max_length=50)
+    label: str = Field(min_length=2, max_length=100)
+    keywords: list[ShortTerm] = Field(min_length=1, max_length=100)
+    marques: list[ShortTerm] = Field(default_factory=list, max_length=30)
+    commercial: str | None = Field(default=None, max_length=255)
+    perimetre: str = Field(default="", max_length=400)
 
 
 class SiteInput(BaseModel):
-    nom: str
-    url: str
-    description: str = ""
+    model_config = ConfigDict(extra="forbid")
+
+    nom: str = Field(default="", max_length=255)
+    url: str = Field(min_length=3, max_length=1000)
+    description: str = Field(default="", max_length=2000)
+    prive: bool = False
+    login: str | None = Field(default=None, min_length=1, max_length=255)
+    mot_de_passe: str | None = Field(default=None, min_length=1, max_length=512)
+
+    @model_validator(mode="after")
+    def validate_private_account(self):
+        if self.prive and (not self.login or not self.mot_de_passe):
+            raise ValueError(
+                "Le login et le mot de passe sont obligatoires pour un site privé."
+            )
+        if not self.prive and (self.login or self.mot_de_passe):
+            raise ValueError(
+                "Les identifiants nécessitent l'activation du site privé."
+            )
+        return self
 
 
 class RegisterRequest(BaseModel):
-    nom_entreprise: str = Field(..., min_length=2, max_length=255)
-    forme_juridique: str | None = None
-    matricule_fiscal: str | None = None
-    secteur_activite: str | None = None
-    annee_creation: int | None = Field(None, ge=1900, le=2030)
-    tranche_effectif: str | None = None
+    model_config = ConfigDict(extra="forbid")
 
-    responsable_nom: str | None = None
-    responsable_fonction: str | None = None
+    nom_entreprise: str = Field(min_length=2, max_length=255)
     email: EmailStr
-    password: str = Field(..., min_length=8, max_length=128)
-    telephone_fixe: str | None = None
-    telephone_mobile: str | None = None
-    site_web: str | None = None
-    linkedin: str | None = None
+    password: str = Field(min_length=8, max_length=128)
 
-    adresse: str | None = None
-    code_postal: str | None = None
-    ville: str | None = None
-    gouvernorat: str | None = None
-    pays: str = "Tunisie"
+    forme_juridique: str | None = Field(default=None, max_length=50)
+    matricule_fiscal: str | None = Field(default=None, max_length=50)
+    secteur_activite: str | None = Field(default=None, max_length=255)
+    annee_creation: int | None = Field(default=None, ge=1900, le=2100)
+    tranche_effectif: str | None = Field(default=None, max_length=50)
 
-    description_activite: str | None = None
-    produits_services: str | None = None
-    marques_representees: list[str] = []
-    certifications: list[str] = []
-    clients_cibles: str | None = None
-    zones_intervention: list[str] = []
-    concurrents: str | None = None
-    tranche_ca: str | None = None
+    responsable_nom: str | None = Field(default=None, max_length=255)
+    responsable_fonction: str | None = Field(default=None, max_length=255)
+    telephone_fixe: str | None = Field(default=None, max_length=20)
+    telephone_mobile: str | None = Field(default=None, max_length=20)
+    site_web: str | None = Field(default=None, max_length=500)
+    linkedin: str | None = Field(default=None, max_length=500)
 
-    types_offres: str | None = None
-    budget_min_interet: float | None = Field(None, ge=0)
-    budget_max_interet: float | None = Field(None, ge=0)
-    sites_consultes: str | None = None
-    frequence_alertes: str = "quotidien"
+    adresse: str | None = Field(default=None, max_length=500)
+    code_postal: str | None = Field(default=None, max_length=10)
+    ville: str | None = Field(default=None, max_length=100)
+    gouvernorat: str | None = Field(default=None, max_length=100)
+    pays: str = Field(default="Tunisie", min_length=2, max_length=100)
 
-    categories: list[CategoryInput]
-    exclusion_keywords: list[str] = []
-    sites: list[SiteInput] = []
-    commerciaux: list[CommercialInput] = []
+    description_activite: str | None = Field(default=None, max_length=8000)
+    produits_services: str | None = Field(default=None, max_length=8000)
+    marques_representees: list[ShortTerm] = Field(
+        default_factory=list, max_length=30
+    )
+    certifications: list[ShortTerm] = Field(default_factory=list, max_length=30)
+    clients_cibles: str | None = Field(default=None, max_length=4000)
+    zones_intervention: list[ShortTerm] = Field(default_factory=list, max_length=50)
+    concurrents: str | None = Field(default=None, max_length=4000)
+    tranche_ca: str | None = Field(default=None, max_length=50)
 
-    # Rétrocompat
-    telephone: str = ""
-    region: str = ""
+    types_offres: str | None = Field(default=None, max_length=4000)
+    budget_min_interet: float | None = Field(
+        default=None, ge=0, allow_inf_nan=False
+    )
+    budget_max_interet: float | None = Field(
+        default=None, ge=0, allow_inf_nan=False
+    )
+    sites_consultes: str | None = Field(default=None, max_length=6000)
+    frequence_alertes: Literal[
+        "instantane", "quotidien", "hebdomadaire"
+    ] = "quotidien"
+
+    categories: list[CategoryInput] = Field(min_length=1, max_length=10)
+    exclusion_keywords: list[ShortTerm] = Field(
+        default_factory=list, max_length=50
+    )
+    commerciaux: list[CommercialInput] = Field(
+        default_factory=list, max_length=30
+    )
+    source_ids: list[SourceId] = Field(default_factory=list, max_length=10)
+    sites: list[SiteInput] = Field(default_factory=list, max_length=10)
+
+    # Compatibilité avec le formulaire actuel.
+    telephone: str = Field(default="", max_length=20)
+    region: str = Field(default="", max_length=100)
+
+    @model_validator(mode="after")
+    def check_budgets(self):
+        if (
+            self.budget_min_interet is not None
+            and self.budget_max_interet is not None
+            and self.budget_min_interet > self.budget_max_interet
+        ):
+            raise ValueError("Le budget minimum dépasse le maximum.")
+        return self
 
 
 class RegisterResponse(BaseModel):
@@ -103,55 +156,76 @@ class RegisterResponse(BaseModel):
     categories_count: int
     commerciaux_count: int
     sites_count: int
+    sources_pending_count: int
 
 
-FORMES_JURIDIQUES = [
-    "SARL", "SA", "SUARL", "SNC", "SCS",
-    "Auto-entrepreneur", "Société civile", "Autre",
-]
-TRANCHES_EFFECTIF = ["1-10", "11-50", "51-200", "201-500", "500+"]
-GOUVERNORATS = [
-    "Ariana", "Béja", "Ben Arous", "Bizerte", "Gabès", "Gafsa",
-    "Jendouba", "Kairouan", "Kasserine", "Kébili", "Le Kef", "Mahdia",
-    "La Manouba", "Médenine", "Monastir", "Nabeul", "Sfax", "Sidi Bouzid",
-    "Siliana", "Sousse", "Tataouine", "Tozeur", "Tunis", "Zaghouan",
-]
-TRANCHES_CA = [
-    "< 100 000 TND", "100 000 - 500 000 TND", "500 000 - 1 000 000 TND",
-    "1 000 000 - 5 000 000 TND", "5 000 000+ TND",
-]
-SECTEURS = [
-    "BTP / Travaux publics", "Matériel roulant / Transport",
-    "Informatique / IT", "Équipements médicaux", "Fournitures de bureau",
-    "Agroalimentaire", "Énergie / Électricité", "Télécommunications",
-    "Formation / Consulting", "Sécurité / Gardiennage",
-    "Nettoyage / Entretien", "Autre",
-]
+class PublicSourceOut(BaseModel):
+    source_id: int
+    nom: str
+    url: str
+    type: str
+    description: str
 
-DEDICATED_DEFAULT_SOURCES = [
-    {
-        "nom": "ONMP",
-        "url": "https://www.marchespublics.gov.tn/",
-        "type": "dedie",
-        "code_hint": "onmp",
-    },
-    {
-        "nom": "TUNEPS",
-        "url": "https://www.tuneps.tn/portail/offres",
-        "type": "dedie",
-        "code_hint": "tuneps",
-    },
-]
+
+def _clean(value):
+    if value is None:
+        return None
+    return str(value).strip() or None
+
+
+def _unique_strings(values):
+    result = []
+    seen = set()
+
+    for value in values:
+        clean = " ".join(value.split())
+        key = clean.casefold()
+
+        if clean and key not in seen:
+            seen.add(key)
+            result.append(clean)
+
+    return result
+
+
+@router.get("/source-catalog", response_model=list[PublicSourceOut])
+def get_source_catalog(
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Content-Type"] = "application/json; charset=utf-8"
+    return list_public_catalog(db)
 
 
 @router.get("/options")
 def get_registration_options():
     return {
-        "formes_juridiques": FORMES_JURIDIQUES,
-        "tranches_effectif": TRANCHES_EFFECTIF,
-        "gouvernorats": GOUVERNORATS,
-        "tranches_ca": TRANCHES_CA,
-        "secteurs": SECTEURS,
+        "formes_juridiques": [
+            "SARL", "SA", "SUARL", "SNC", "SCS",
+            "Auto-entrepreneur", "Société civile", "Autre",
+        ],
+        "tranches_effectif": ["1-10", "11-50", "51-200", "201-500", "500+"],
+        "gouvernorats": [
+            "Ariana", "Béja", "Ben Arous", "Bizerte", "Gabès", "Gafsa",
+            "Jendouba", "Kairouan", "Kasserine", "Kébili", "Le Kef",
+            "Mahdia", "La Manouba", "Médenine", "Monastir", "Nabeul",
+            "Sfax", "Sidi Bouzid", "Siliana", "Sousse", "Tataouine",
+            "Tozeur", "Tunis", "Zaghouan",
+        ],
+        "tranches_ca": [
+            "< 100 000 TND", "100 000 - 500 000 TND",
+            "500 000 - 1 000 000 TND", "1 000 000 - 5 000 000 TND",
+            "5 000 000+ TND",
+        ],
+        "secteurs": [
+            "BTP / Travaux publics", "Matériel roulant / Transport",
+            "Informatique / IT", "Équipements médicaux",
+            "Fournitures de bureau", "Agroalimentaire",
+            "Énergie / Électricité", "Télécommunications",
+            "Formation / Consulting", "Sécurité / Gardiennage",
+            "Nettoyage / Entretien", "Autre",
+        ],
         "frequences_alertes": [
             {"value": "instantane", "label": "Instantanée"},
             {"value": "quotidien", "label": "Quotidienne"},
@@ -160,277 +234,300 @@ def get_registration_options():
     }
 
 
-def _clean(value: str | None) -> str | None:
-    if value is None:
-        return None
-    cleaned = str(value).strip()
-    return cleaned if cleaned else None
-
-
-def _normalize_url(url: str) -> str:
-    value = (url or "").strip()
-    if not value:
-        return ""
-    if not value.startswith(("http://", "https://")):
-        value = "https://" + value
-    return value
-
-
-def _get_or_create_source(
-    db: Session,
-    nom: str,
-    url: str,
-    source_type: str,
-    notes: str = "",
-    actif: bool = False,
-) -> ScrapingSource:
-    """
-    Récupère une source existante par URL normalisée approximative,
-    sinon la crée. Les sources dédiées restent inactives côté universel
-    (le pipeline les gère via OnmpScraper/TunepsScraper).
-    """
-    url = _normalize_url(url)
-    existing = db.query(ScrapingSource).filter_by(url=url).first()
-    if existing:
-        return existing
-
-    # Fallback : même nom + type dedie
-    if source_type == "dedie":
-        by_name = (
-            db.query(ScrapingSource)
-            .filter(ScrapingSource.nom == nom)
-            .first()
-        )
-        if by_name:
-            return by_name
-
-    source = ScrapingSource(
-        nom=nom.strip()[:255],
-        url=url,
-        type=source_type,
-        actif=actif,
-        notes=(notes or "")[:500] if hasattr(ScrapingSource, "notes") else None,
-    )
-    # notes peut ne pas exister selon le modèle — on reste défensif
-    try:
-        source.notes = (notes or "")[:500]
-    except Exception:
-        pass
-
-    db.add(source)
-    db.flush()
-    return source
-
-
-def _link_company_source(db: Session, company_id: int, source_id: int) -> None:
-    exists = (
-        db.query(CompanySource)
-        .filter_by(company_id=company_id, source_id=source_id)
-        .first()
-    )
-    if not exists:
-        db.add(CompanySource(
-            company_id=company_id,
-            source_id=source_id,
-            actif=True,
-        ))
-
-
-@router.post("", response_model=RegisterResponse)
+@router.post("", response_model=RegisterResponse, status_code=201)
+@limiter.limit("5/hour")
 def register_client(
+    request: Request,
+    response: Response,
     payload: RegisterRequest,
     db: Session = Depends(get_db),
 ):
-    email_clean = payload.email.strip().lower()
+    email = str(payload.email).strip().lower()
+    company_name = _clean(payload.nom_entreprise)
 
-    if db.query(User).filter_by(email=email_clean).first():
-        raise HTTPException(409, "Un compte existe déjà avec cet email.")
+    if not company_name or len(company_name) < 2:
+        raise HTTPException(422, "Nom d'entreprise invalide.")
 
-    if not payload.categories:
-        raise HTTPException(400, "Au moins une catégorie est requise.")
+    # Valider les commerciaux sans rechercher ceux d'une autre entreprise.
+    commercial_specs = []
+    names_seen = set()
+    emails_seen = set()
 
-    if payload.matricule_fiscal:
-        mf = payload.matricule_fiscal.strip()
-        if mf:
-            existing_mf = db.query(Company).filter_by(matricule_fiscal=mf).first()
-            if existing_mf:
+    for item in payload.commerciaux:
+        name = item.nom.strip()
+        commercial_email = str(item.email).strip().lower()
+
+        if len(name) < 2:
+            raise HTTPException(422, "Nom de commercial invalide.")
+
+        if name.casefold() in names_seen or commercial_email in emails_seen:
+            raise HTTPException(
+                422, "Commercial dupliqué dans le formulaire."
+            )
+
+        names_seen.add(name.casefold())
+        emails_seen.add(commercial_email)
+        commercial_specs.append({
+            "nom": name,
+            "email": commercial_email,
+        })
+
+    commercial_names = {
+        item["nom"].casefold(): item["nom"]
+        for item in commercial_specs
+    }
+
+    categories = {}
+    rules = {}
+
+    for category in payload.categories:
+        category_id = re.sub(
+            r"[\s-]+", "_", category.id.strip().upper()
+        )
+
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]{1,49}", category_id):
+            raise HTTPException(422, "Identifiant de catégorie invalide.")
+
+        if category_id in categories:
+            raise HTTPException(422, "Catégorie dupliquée.")
+
+        assigned = _clean(category.commercial)
+        if assigned:
+            assigned = commercial_names.get(assigned.casefold())
+            if assigned is None:
                 raise HTTPException(
-                    409,
-                    "Une entreprise avec ce matricule fiscal existe déjà.",
+                    422,
+                    "Une catégorie référence un commercial "
+                    "absent de cette inscription.",
                 )
 
-    # ── Transaction unique ──
-    try:
-        # 1. User admin (company_id renseigné après création Company)
-        user = User(
-            email=email_clean,
-            nom=(payload.responsable_nom or payload.nom_entreprise).strip()[:255],
-            password_hash=hash_password(payload.password),
-            profil="admin",
-            actif=True,
-            company_id=None,
-        )
-        db.add(user)
-        db.flush()
+        keywords = _unique_strings(category.keywords)
+        if not keywords:
+            raise HTTPException(
+                422, f"Aucun mot-clé pour {category_id}."
+            )
 
-        # 2. Company
+        categories[category_id] = {
+            "label": category.label.strip(),
+            "perimetre": category.perimetre.strip(),
+            "keywords": keywords,
+            "marques": _unique_strings(category.marques),
+            "commercial": assigned,
+        }
+
+        if assigned:
+            rules[category_id] = [assigned]
+
+    manual_specs = [
+        {
+            "nom": site.nom.strip(),
+            "url": normalize_source_url(site.url),
+            "description": site.description.strip(),
+            "prive": site.prive,
+            "login": site.login.strip() if site.login else None,
+            "mot_de_passe": site.mot_de_passe,
+        }
+        for site in payload.sites
+    ]
+
+    company_fields = {
+        "forme_juridique", "matricule_fiscal", "secteur_activite",
+        "annee_creation", "tranche_effectif", "responsable_nom",
+        "responsable_fonction", "telephone_mobile", "site_web",
+        "linkedin", "adresse", "code_postal", "ville", "pays",
+        "description_activite", "produits_services", "marques_representees",
+        "certifications", "clients_cibles", "zones_intervention",
+        "concurrents", "tranche_ca", "types_offres", "budget_min_interet",
+        "budget_max_interet", "sites_consultes", "frequence_alertes",
+    }
+
+    company_data = payload.model_dump(include=company_fields)
+
+    for key, value in company_data.items():
+        if isinstance(value, str):
+            company_data[key] = _clean(value)
+
+    company_data["pays"] = company_data.get("pays") or "Tunisie"
+    company_data["marques_representees"] = _unique_strings(
+        payload.marques_representees
+    )
+
+    # Les commentaires des liens manuels restent dans le profil
+    # de cette entreprise, pas dans le catalogue public.
+    manual_notes = [
+        (
+            f"{site['nom'] or 'Site manuel'} : {site['url']}"
+            + (
+                f"\nCommentaire : {site['description']}"
+                if site["description"] else ""
+            )
+        )
+        for site in manual_specs
+    ]
+
+    company_data["sites_consultes"] = "\n\n".join(
+        part
+        for part in [
+            _clean(payload.sites_consultes),
+            "\n\n".join(manual_notes),
+        ]
+        if part
+    ) or None
+
+    try:
+        if (
+            db.query(User)
+            .filter(func.lower(User.email) == email)
+            .first()
+        ):
+            raise HTTPException(409, "Cet email possède déjà un compte.")
+
+        fiscal_id = company_data.get("matricule_fiscal")
+        if fiscal_id and (
+            db.query(Company)
+            .filter_by(matricule_fiscal=fiscal_id)
+            .first()
+        ):
+            raise HTTPException(409, "Matricule fiscal déjà enregistré.")
+
+        # 1. Entreprise.
         company = Company(
-            owner_id=user.id,
-            nom=payload.nom_entreprise.strip(),
-            forme_juridique=_clean(payload.forme_juridique),
-            matricule_fiscal=_clean(payload.matricule_fiscal),
-            secteur_activite=_clean(payload.secteur_activite),
-            annee_creation=payload.annee_creation,
-            tranche_effectif=_clean(payload.tranche_effectif),
-            responsable_nom=_clean(payload.responsable_nom),
-            responsable_fonction=_clean(payload.responsable_fonction),
-            telephone_fixe=_clean(payload.telephone_fixe or payload.telephone),
-            telephone_mobile=_clean(payload.telephone_mobile),
-            site_web=_clean(payload.site_web),
-            linkedin=_clean(payload.linkedin),
-            adresse=_clean(payload.adresse),
-            code_postal=_clean(payload.code_postal),
-            ville=_clean(payload.ville),
-            gouvernorat=_clean(payload.gouvernorat or payload.region),
-            pays=payload.pays or "Tunisie",
-            description_activite=_clean(payload.description_activite),
-            produits_services=_clean(payload.produits_services),
-            marques_representees=payload.marques_representees or [],
-            certifications=payload.certifications or [],
-            clients_cibles=_clean(payload.clients_cibles),
-            zones_intervention=payload.zones_intervention or [],
-            concurrents=_clean(payload.concurrents),
-            tranche_ca=_clean(payload.tranche_ca),
-            types_offres=_clean(payload.types_offres),
-            budget_min_interet=payload.budget_min_interet,
-            budget_max_interet=payload.budget_max_interet,
-            sites_consultes=_clean(payload.sites_consultes),
-            frequence_alertes=payload.frequence_alertes or "quotidien",
+            nom=company_name,
+            owner_id=None,
+            telephone_fixe=_clean(
+                payload.telephone_fixe or payload.telephone
+            ),
+            gouvernorat=_clean(
+                payload.gouvernorat or payload.region
+            ),
             onboarding_complete=True,
+            **company_data,
         )
         db.add(company)
         db.flush()
 
-        # Lier user → company
-        user.company_id = company.id
+        # 2. Compte administrateur de CETTE entreprise.
+        user = User(
+            email=email,
+            nom=_clean(payload.responsable_nom) or company_name,
+            password_hash=hash_password(payload.password),
+            profil="admin",
+            actif=True,
+            company_id=company.id,
+        )
+        db.add(user)
+        db.flush()
+        company.owner_id = user.id
 
-        # 3. Configuration DÉDIÉE (jamais de fusion globale)
-        categories: dict = {}
-        rules: dict = {}
-        for cat in payload.categories:
-            cat_id = cat.id.upper().replace(" ", "_").replace("-", "_")
-            if not cat_id:
-                continue
-            categories[cat_id] = {
-                "commercial": cat.commercial,
-                "keywords": list(dict.fromkeys(
-                    [str(k).strip() for k in (cat.keywords or []) if str(k).strip()]
-                )),
-                "marques": list(dict.fromkeys(
-                    [str(m).strip() for m in (cat.marques or []) if str(m).strip()]
-                )),
-            }
-            if cat.commercial:
-                rules[cat_id] = [cat.commercial]
+        # 3. Ses commerciaux.
+        for item in commercial_specs:
+            db.add(Commercial(
+                company_id=company.id,
+                nom=item["nom"],
+                email=item["email"],
+                actif=True,
+            ))
 
-        exclusions = list(dict.fromkeys(
-            [str(k).strip() for k in (payload.exclusion_keywords or []) if str(k).strip()]
-        ))
+        # 4. Ses abonnements.
+        selected_sources = {}
 
-        config = Configuration(
+        for source_id in dict.fromkeys(payload.source_ids):
+            source = get_public_source(db, source_id)
+            subscribe_source(db, company.id, source)
+            selected_sources[source.id] = source
+
+        for site in manual_specs:
+            source = propose_source(
+                db,
+                company_id=company.id,
+                nom=site["nom"],
+                url=site["url"],
+                activate=True,   # sources validées par le client → actives immédiatement
+            )
+            if site["prive"]:
+                link = db.query(CompanySource).filter_by(
+                    company_id=company.id,
+                    source_id=source.id,
+                ).one()
+                db.add(SourceAccount(
+                    company_source_id=link.id,
+                    login=site["login"],
+                    password_encrypted=encrypt_source_password(
+                        site["mot_de_passe"]
+                    ),
+                ))
+            selected_sources[source.id] = source
+
+        if len(selected_sources) > 10:
+            raise HTTPException(422, "Maximum 10 sources par inscription.")
+
+        active_sources = {
+            "onmp": {"actif": False, "frequence": "daily"},
+            "tuneps": {"actif": False, "frequence": "daily"},
+        }
+
+        for source in selected_sources.values():
+            code = source.nom.strip().lower()
+            if source.type == "dedie" and code in active_sources:
+                active_sources[code]["actif"] = True
+
+        # 5. Sa configuration : aucune fusion globale.
+        db.add(Configuration(
             company_id=company.id,
             score_decision_threshold=50,
             score_instant_alert_threshold=70,
             categories=categories,
-            exclusion_keywords=exclusions,
-            active_sources={
-                "onmp": {"actif": True, "frequence": "daily"},
-                "tuneps": {"actif": True, "frequence": "daily"},
-            },
+            exclusion_keywords=_unique_strings(
+                payload.exclusion_keywords
+            ),
             assignment_rules=rules,
+            active_sources=active_sources,
+        ))
+
+        pending = sum(
+            not bool(source.actif)
+            for source in selected_sources.values()
         )
-        db.add(config)
 
-        # 4. Commerciaux (scopés au client)
-        created_commercials = 0
-        seen_emails: set[str] = set()
-        for c in payload.commerciaux:
-            nom = c.nom.strip()
-            c_email = c.email.strip().lower()
-            if not nom or not c_email or c_email in seen_emails:
-                continue
-            seen_emails.add(c_email)
-
-            existing = (
-                db.query(Commercial)
-                .filter_by(company_id=company.id, email=c_email)
-                .first()
-            )
-            if existing:
-                continue
-
-            db.add(Commercial(
-                company_id=company.id,
-                nom=nom[:255],
-                email=c_email[:255],
-                actif=True,
-            ))
-            created_commercials += 1
-
-        # 5. Sources : ONMP + TUNEPS (dédiées) + sites universels
-        sites_count = 0
-
-        for spec in DEDICATED_DEFAULT_SOURCES:
-            source = _get_or_create_source(
-                db,
-                nom=spec["nom"],
-                url=spec["url"],
-                source_type="dedie",
-                notes="Source dédiée (scraper natif)",
-                actif=False,  # ne pas passer par UniversalScraper
-            )
-            _link_company_source(db, company.id, source.id)
-
-        for site in payload.sites:
-            url = _normalize_url(site.url)
-            if not url:
-                continue
-            # Sécurité basique SSRF
-            host = (urlparse(url).hostname or "").lower()
-            if host in {"localhost", "127.0.0.1", "0.0.0.0"} or host.endswith(".local"):
-                continue
-
-            source = _get_or_create_source(
-                db,
-                nom=site.nom.strip() or host,
-                url=url,
-                source_type="universel",
-                notes=site.description or "",
-                actif=False,  # activation après test technique
-            )
-            _link_company_source(db, company.id, source.id)
-            sites_count += 1
+        result = RegisterResponse(
+            message=(
+                "Compte créé. Les nouvelles sources restent "
+                "inactives jusqu'à leur validation."
+            ),
+            email=email,
+            company_id=company.id,
+            categories_count=len(categories),
+            commerciaux_count=len(commercial_specs),
+            sites_count=len(selected_sources),
+            sources_pending_count=pending,
+        )
 
         db.commit()
+        try:
+            from app.workers.tasks import run_pipeline_for_new_client
+            run_pipeline_for_new_client.apply_async(
+                args=[company.id],
+                countdown=30,   # 30 secondes pour laisser le commit se propager
+            )
+            print(f"[register] Pipeline immédiat planifié pour company_id={company.id}")
+        except Exception as exc:
+            # Celery peut ne pas être disponible en développement
+            print(f"[register] Pipeline immédiat non lancé (Celery indisponible): {exc}")
+
+        response.headers["Cache-Control"] = "no-store"
+        return result
+    
 
     except HTTPException:
         db.rollback()
         raise
-    except Exception as exc:
+    except IntegrityError as exc:
         db.rollback()
         raise HTTPException(
-            status_code=500,
-            detail=f"Échec de l'inscription : {exc}",
+            409,
+            "Conflit pendant l'inscription. Vérifiez les informations "
+            "ou contactez l'administrateur.",
         ) from exc
-
-    return RegisterResponse(
-        message=(
-            f"Compte créé pour {payload.nom_entreprise}. "
-            "Vous pouvez maintenant vous connecter."
-        ),
-        email=email_clean,
-        company_id=company.id,
-        categories_count=len(categories),
-        commerciaux_count=created_commercials,
-        sites_count=sites_count,
-    )
+    except Exception:
+        db.rollback()
+        raise

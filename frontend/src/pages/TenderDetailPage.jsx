@@ -1,14 +1,14 @@
 ﻿// src/pages/TenderDetailPage.jsx
 import { useParams, Link } from "react-router-dom";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
-import { ArrowLeft, ExternalLink, Check } from "lucide-react";
+import { ArrowLeft, ExternalLink, Check, ThumbsDown, ThumbsUp } from "lucide-react";
 import PageWrapper from "../components/layout/PageWrapper";
 import ScoreBadge from "../components/tender/ScoreBadge";
 import TenderStatusBadge from "../components/tender/TenderStatusBadge";
 import Spinner from "../components/ui/Spinner";
 import Alert from "../components/ui/Alert";
 import { useTender } from "../hooks/useTenders";
-import { updateTenderStatus } from "../api/tenders";
+import { updateTenderStatus, updateTenderFeedback } from "../api/tenders";
 import { formatDate } from "../utils/formatters";
 import { extractScoreInfo } from "../utils/scoreDetails";
 import { categoryLabel } from "../utils/categories";
@@ -28,6 +28,13 @@ export default function TenderDetailPage() {
     mutationFn: (statut) => updateTenderStatus(id, statut),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tender", id] });
+      queryClient.invalidateQueries({ queryKey: ["tenders"] });
+    },
+  });
+  const feedbackMutation = useMutation({
+    mutationFn: (feedback) => updateTenderFeedback(id, feedback),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["tender", id], updated);
       queryClient.invalidateQueries({ queryKey: ["tenders"] });
     },
   });
@@ -153,6 +160,35 @@ export default function TenderDetailPage() {
             <Alert variant="error">Le changement de statut a échoué — réessayez.</Alert>
           </div>
         )}
+
+        <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-6">
+          <span className="text-sm font-medium text-ink-900">Votre avis :</span>
+          <button
+            type="button"
+            onClick={() => feedbackMutation.mutate("pertinent")}
+            disabled={feedbackMutation.isPending}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium ${
+              tender.feedback === "pertinent"
+                ? "border-teal-600 bg-teal-600 text-white"
+                : "border-teal-200 text-teal-700 hover:bg-teal-50"
+            } disabled:opacity-60`}
+          >
+            <ThumbsUp size={13} /> Pertinent
+          </button>
+          <button
+            type="button"
+            onClick={() => feedbackMutation.mutate("pas_pertinent")}
+            disabled={feedbackMutation.isPending}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium ${
+              tender.feedback === "pas_pertinent"
+                ? "border-rose-600 bg-rose-600 text-white"
+                : "border-rose-200 text-rose-700 hover:bg-rose-50"
+            } disabled:opacity-60`}
+          >
+            <ThumbsDown size={13} /> Pas pertinent
+          </button>
+          {feedbackMutation.isError && <Alert variant="error">Enregistrement impossible.</Alert>}
+        </div>
 
        {(
             tender.budget_detecte != null ||

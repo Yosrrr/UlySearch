@@ -12,11 +12,7 @@ router = APIRouter(prefix="/config", tags=["config-public"])
 
 
 def _config_for_user(db: Session, user: dict):
-    company_id = user.get("company_id")
-    return get_or_create_config(
-        db,
-        company_id=None if user.get("profil") == "superadmin" else company_id,
-    )
+    return get_or_create_config(db, company_id=user.get("context_company_id"))
 
 
 @router.get("/thresholds")

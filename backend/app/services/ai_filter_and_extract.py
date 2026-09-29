@@ -176,7 +176,10 @@ def _build_system_prompt(dynamic_categories: dict) -> str:
     brands_unique = sorted(set(all_brands))
     brands_str = f" (marques {', '.join(brands_unique)})" if brands_unique else ""
 
-    return f"""Tu structures des appels d'offres publics tunisiens pour une société de vente/location de matériel roulant, engins TP et manutention{brands_str}.
+    return f"""Tu extrais les informations factuelles d'un appel d'offres.
+Ne suppose aucun secteur d'activité pour l'entreprise cliente.
+Si une classification est demandée, utilise exclusivement les catégories
+et leurs définitions fournies.{brands_str}.
 
 Catégories possibles : {", ".join(category_names)}
 
@@ -202,10 +205,12 @@ Réponds UNIQUEMENT en JSON strict, sans aucun texte autour, avec exactement ces
 }}
 
 Règles strictes :
-- N'invente jamais un chiffre, une date, un budget, un cautionnement, une durée ou un lieu absent du texte : mets null.
-- En revanche, "description" doit TOUJOURS être remplie si l'objet du marché est présent.
-- Si le texte de détail est absent, limité ou protégé par abonnement, rédige "description" uniquement à partir des métadonnées disponibles : objet, acheteur, source, date limite.
-- La valeur de "categorie" doit être exactement l'une des catégories listées ci-dessus, ou null.
+ L'absence de catégorie sur le site ne signifie pas que l'offre est non pertinente.
+- N'invente jamais une date partielle ou absente.
+- N'invente jamais une référence, un acheteur, un lien ou un montant.
+- Ne convertis pas implicitement une devise.
+- L'extraction des détails ne doit pas annuler une décision de pertinence
+  déjà obtenue par le moteur métier.
 """
 
 

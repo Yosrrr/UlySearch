@@ -1,0 +1,20 @@
+# Python caches and test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local runtime state
+*.log
+*.pid
+celerybeat-schedule.*
+run/
+app/run/
+
+# Local debug captures and generated dumps
+/debug_*.html
+/debug_*/
+*.rdb
+
+# Local environment and generated reports
+.env
+onboarding_response.json

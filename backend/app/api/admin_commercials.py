@@ -3,21 +3,22 @@
 Résout le constat §2 de la revue n°2 : la table commercials existe
 mais aucun endpoint ne permet de la peupler autrement qu'en SQL direct.
 """
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.database import get_db
 from app.models.commercial import Commercial
+from app.models.configuration import Configuration
 from app.api.deps import require_admin_or_superadmin
 
 router = APIRouter(prefix="/admin/commercials", tags=["admin-commercials"])
 
 
 def _company_filter(query, user):
-    if user.get("profil") == "superadmin":
+    company_id = user.get("context_company_id")
+    if user.get("profil") == "superadmin" and company_id is None:
         return query
-    company_id = user.get("company_id")
     if company_id is None:
         raise HTTPException(status_code=403, detail="Compte non rattaché à une entreprise.")
     return query.filter(Commercial.company_id == int(company_id))
@@ -36,13 +37,13 @@ class CommercialUpdate(BaseModel):
 
 
 class CommercialOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     nom: str
     email: str
     actif: bool
 
-    class Config:
-        from_attributes = True
 
 
 @router.get("", response_model=list[CommercialOut])
@@ -70,7 +71,9 @@ def create_commercial(
     if query.filter(Commercial.email == payload.email).first():
         raise HTTPException(status_code=409, detail="Un commercial avec cet email existe déjà.")
 
-    company_id = None if user.get("profil") == "superadmin" else int(user["company_id"])
+    company_id = user.get("context_company_id")
+    if company_id is not None:
+        company_id = int(company_id)
     row = Commercial(
         nom=nom,
         email=payload.email,
@@ -119,6 +122,21 @@ def delete_commercial(
     ).first()
     if not row:
         raise HTTPException(status_code=404, detail="Commercial introuvable.")
+
+    configs = db.query(Configuration)
+    if row.company_id is not None:
+        configs = configs.filter(Configuration.company_id == row.company_id)
+    for config in configs.all():
+        rules = config.assignment_rules or {}
+        config.assignment_rules = {
+            category: [name for name in (names if isinstance(names, list) else [names]) if name != row.nom]
+            for category, names in rules.items()
+        }
+        categories = config.categories or {}
+        for category_data in categories.values():
+            if isinstance(category_data, dict) and category_data.get("commercial") == row.nom:
+                category_data["commercial"] = None
+        config.categories = categories
 
     db.delete(row)
     db.commit()

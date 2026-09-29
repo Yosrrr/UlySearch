@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTenders } from "./useTenders";
 import { getRuntimeThresholds } from "../api/config";
+import { daysUntil } from "../utils/formatters";
 
 export function useDashboardData() {
   const { data: tenders, isLoading, isError } = useTenders({});
@@ -21,6 +22,11 @@ export function useDashboardData() {
 
     const retenus = tenders.filter((t) => t.statut === "retenu");
     const assignes = tenders.filter((t) => Boolean(t.commercial_assigne));
+    const urgentes = tenders.filter((t) => {
+      const remaining = daysUntil(t.date_limite);
+      return remaining !== null && remaining >= 0 && remaining <= 7;
+    });
+    const feedbacks = tenders.filter((t) => Boolean(t.feedback));
 
     const alertesDuJour = [...tenders]
       .filter((t) => t.score > instantThreshold)
@@ -50,6 +56,8 @@ export function useDashboardData() {
         nouveaux_marches: tenders.length,
         retenus: retenus.length,
         assignes: assignes.length,
+        urgentes: urgentes.length,
+        feedbacks: feedbacks.length,
       },
       alertes_du_jour: alertesDuJour,
       repartition_commerciaux: Object.values(parCommercial),

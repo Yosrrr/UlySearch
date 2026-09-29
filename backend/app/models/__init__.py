@@ -18,6 +18,7 @@ from app.models.configuration import Configuration  # noqa: F401,E402
 from app.models.scraping_source import ScrapingSource  # noqa: F401,E402
 from app.models.sotradies import Sotradies  # noqa: F401,E402
 from app.models.company_source import CompanySource  # noqa: F401,E402
+from app.models.source_account import SourceAccount  # noqa: F401,E402
 from app.models.company_tender import CompanyTender  # noqa: F401,E402
 from app.models.sent_log import SentLog  # noqa: F401,E402
 from app.models.audit_log import AuditLog  # noqa: F401,E402
@@ -33,6 +34,7 @@ __all__ = [
     "ScrapingSource",
     "Sotradies",
     "CompanySource",
+    "SourceAccount",
     "CompanyTender",
     "SentLog",
     "AuditLog",

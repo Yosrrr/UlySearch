@@ -34,7 +34,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-ink-950 px-4">
       <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-xl">
         <div className="mb-6 text-center">
-          <p className="text-xl font-semibold text-ink-900">VEILLEAO</p>
+          <p className="text-xl font-semibold text-ink-900">UlySearch</p>
           <p className="text-sm text-slate-500">Veille des appels d'offres</p>
         </div>
 
