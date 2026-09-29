@@ -51,13 +51,7 @@ from app.services.source_credentials import decrypt_source_password
 
 SCRAPE_CACHE_TTL = 25 * 60
 
-def _reset_ai_cache() -> None:
-    """Vide le cache IA entre deux runs (évite les fuites mémoire)."""
-    try:
-        from app.services.scoring_orchestrator import _AI_CALL_CACHE
-        _AI_CALL_CACHE.clear()
-    except Exception:
-        pass
+
 def _build_scrapers(company_id: int | None = None) -> list:
     """
     Charge les sources actives.
@@ -90,10 +84,13 @@ def _build_scrapers(company_id: int | None = None) -> list:
         if company_id is not None:
             query = query.where(CompanySource.company_id == company_id)
 
-        source_specs = [
-            dict(row)
-            for row in db.execute(query).mappings().all()
-        ]
+        seen_ids: set[int] = set()
+        source_specs = []
+        for row in db.execute(query).mappings().all():
+            row_dict = dict(row)
+            if row_dict["id"] not in seen_ids:
+                seen_ids.add(row_dict["id"])
+                source_specs.append(row_dict)
 
     dedicated_factories = {
         "onmp": OnmpScraper,
@@ -117,7 +114,7 @@ def _build_scrapers(company_id: int | None = None) -> list:
             if factory is None:
                 print(f"[pipeline] Connecteur inconnu : {source['nom']}")
                 continue
-            scraper = factory(auth=auth)
+            scraper = factory()
 
         elif source_type == "universel":
             url = str(source["url"] or "").strip()
@@ -129,7 +126,7 @@ def _build_scrapers(company_id: int | None = None) -> list:
                 url=url,
                 use_browser=bool(source["use_browser"]),
                 max_pages=int(source["max_pages"] or 3),
-                auth=auth,
+                
             )
         else:
             print(f"[pipeline] Type inconnu : {source['type']}")
@@ -165,6 +162,11 @@ def fetch_with_cache(scraper) -> list[SotradiesRaw]:
             tenders.append(SotradiesRaw(**item))
         elif hasattr(item, "model_dump"):
             tenders.append(SotradiesRaw(**item.model_dump()))
+        else:
+            raise TypeError(
+                f"Type invalide retourné par {source_name}: "
+                f"{type(item).__name__}"
+            )
 
     cache_set(cache_key, [t.model_dump(mode="json") for t in tenders], SCRAPE_CACHE_TTL)
     return tenders
@@ -468,7 +470,7 @@ def _enrich_with_ai(db, record: Sotradies, effective_source: str, tender_id: str
     return {"errors": errors}
 
 def _reset_ai_cache() -> None:
-    """Vide le cache IA entre deux runs."""
+    """Vide le cache IA entre deux runs (évite les fuites mémoire)."""
     try:
         from app.services.scoring_orchestrator import _AI_CALL_CACHE
         _AI_CALL_CACHE.clear()

@@ -72,17 +72,11 @@ export default function Sidebar() {
     <aside className="w-60 shrink-0 self-stretch border-r border-slate-800 bg-ink-900 text-white">
       <div className="sticky top-0 flex h-screen flex-col">
         {/* Logo */}
+        
         <div className="border-b border-white/10 px-5 py-5">
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2">
-  <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-lg">
-    <img
-     // src="/logo_sot.png"
-      //alt="UlySearch"
-    //  className="h-full w-full object-contain"
-    />
-  </div>
-</div>
+            <div className="flex items-center gap-2"> 
+            </div>
 
             <div>
               <p className="font-display text-base font-semibold tracking-tight">
@@ -93,7 +87,7 @@ export default function Sidebar() {
                 Veille A.O.
               </p>
             </div>
-          </div>
+          </div> 
         </div>
 
         {/* Navigation */}
