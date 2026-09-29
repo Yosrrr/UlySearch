@@ -95,3 +95,20 @@ def test_single_source(source_id: int):
             source.error_count = (source.error_count or 0) + 1
             source.last_error = str(e)[:500]
             return {"source": source.nom, "error": str(e)}
+        
+
+@celery_app.task(name="tasks.run_pipeline_for_new_client", bind=True, max_retries=2)
+def run_pipeline_for_new_client(self, company_id: int):
+    """
+    Run immédiat après inscription d'un nouveau client.
+    Ne scrape que les sources de CE client pour ne pas ralentir les autres.
+    """
+    print(f"[tasks] Run immédiat pour company_id={company_id}")
+    try:
+        summary = run_pipeline(company_id=company_id)
+        dispatch_new_tenders()
+        print(f"[tasks] Run terminé pour company_id={company_id} : {summary}")
+        return summary
+    except Exception as exc:
+        print(f"[tasks] Échec run immédiat company_id={company_id}: {exc}")
+        raise self.retry(exc=exc, countdown=120)

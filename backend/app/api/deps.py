@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.security import decode_access_token
 from app.core.database import get_db
 from app.models.user import User
+from app.models.company import Company
 
 AUTH_COOKIE_NAME = "sotradies_token"
 
@@ -42,6 +43,17 @@ def get_current_user(
     payload["profil"] = user.profil
     payload["nom"] = user.nom
     payload["company_id"] = getattr(user, "company_id", None)
+    requested_company = request.headers.get("X-Company-ID")
+    if user.profil == "superadmin" and requested_company:
+        try:
+            requested_id = int(requested_company)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Identifiant d'entreprise invalide")
+        if not db.query(Company.id).filter(Company.id == requested_id).first():
+            raise HTTPException(status_code=404, detail="Entreprise introuvable")
+        payload["context_company_id"] = requested_id
+    else:
+        payload["context_company_id"] = payload["company_id"]
     return payload
 
 

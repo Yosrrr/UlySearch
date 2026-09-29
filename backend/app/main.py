@@ -33,21 +33,18 @@ from app.models import (  # noqa: F401
     audit_log,
     commercial,
     company,
+    company_source,
+    company_tender,
     configuration,
     known_buyer,
     pipeline_log,
     scraping_source,
+    source_account,
     sent_log,
     sotradies,
     system_action_log,
     user,
 )
-
-# Ajoutez-les ici uniquement lorsque les fichiers existent :
-#
-# from app.models import company_source  # noqa: F401
-# from app.models import company_tender  # noqa: F401
-
 
 # ---------------------------------------------------------------------------
 # Routeurs API
@@ -70,6 +67,7 @@ from app.api.admin_commercials import (
 from app.api.admin_sources import (   
     router as admin_sources_router,
 )
+from app.api.admin_companies import router as admin_companies_router
 from app.api.audit import router as audit_router   
 from app.api.buyers import router as buyers_router   
 from app.api.registration import (   
@@ -77,7 +75,14 @@ from app.api.registration import (
 )
 import app.models 
  
+import logging
 
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import (
+    http_exception_handler,
+    request_validation_exception_handler,
+)
+from starlette.exceptions import HTTPException as StarletteHTTPException 
 
 
 # ---------------------------------------------------------------------------
@@ -88,12 +93,65 @@ app = FastAPI(
     title=settings.APP_NAME,
 )
 
+
 app.state.limiter = limiter
 
 app.add_exception_handler(
     RateLimitExceeded,
     _rate_limit_exceeded_handler,
 )
+onboarding_logger = logging.getLogger("uvicorn.error")
+
+
+def _is_public_onboarding(request) -> bool:
+    return (
+        request.url.path.rstrip("/")
+        == "/api/admin/ai-suggest/public"
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def log_request_validation_error(request, exc):
+    """
+    Affiche les champs refusés sans journaliser
+    tout le formulaire, les cookies ou les mots de passe.
+    """
+    if _is_public_onboarding(request):
+        for error in exc.errors():
+            field = ".".join(
+                str(part)
+                for part in error.get("loc", ())
+            )
+
+            onboarding_logger.warning(
+                "[ONBOARDING 422] champ=%s | type=%s | message=%s",
+                field,
+                error.get("type", ""),
+                error.get("msg", ""),
+            )
+
+    # Conserve la réponse normale de FastAPI.
+    return await request_validation_exception_handler(request, exc)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def log_http_error(request, exc):
+    """
+    Affiche aussi les refus explicites de generate_suggestion().
+    """
+    if _is_public_onboarding(request) and exc.status_code == 422:
+        detail = (
+            exc.detail
+            if isinstance(exc.detail, str)
+            else "Refus métier : consulter le champ detail de la réponse."
+        )
+
+        onboarding_logger.warning(
+            "[ONBOARDING 422] refus metier=%s",
+            detail,
+        )
+
+    return await http_exception_handler(request, exc)
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +202,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(SlowAPIMiddleware)
-app = FastAPI(title=settings.APP_NAME)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -178,6 +235,7 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(tenders.router, prefix="/api")
 app.include_router(admin_system.router, prefix="/api")
 app.include_router(admin_users.router, prefix="/api")
+app.include_router(admin_companies_router, prefix="/api")
 app.include_router(admin_config.router, prefix="/api")
 app.include_router(admin_commercials_router, prefix="/api")
 app.include_router(config_public.router, prefix="/api")

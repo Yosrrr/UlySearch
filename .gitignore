@@ -43,5 +43,15 @@ backend/debug_tuneps_detail/
 backend/debug_*.html
 backend/debug_*.png
 backend/email_previews/
+backend/debug_bad/
+backend/debug_onmp/
+backend/debug_tuneps/
+backend/debug_tuneps_detail/
+backend/debug_boamp.html
+backend/onboarding_response.json
 
+backend/requirements_old.txt
+backend/gen_migration.py
 
+*.md
+*.txt

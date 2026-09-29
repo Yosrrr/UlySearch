@@ -25,6 +25,7 @@ from app.models.company_tender import CompanyTender
 from app.models.commercial import Commercial
 from app.models.configuration import Configuration
 from app.models.scraping_source import ScrapingSource
+from app.models.source_account import SourceAccount
 from app.models.sotradies import Sotradies
 from app.models.user import User
 
@@ -62,7 +63,7 @@ def main() -> None:
     required_tables = {
         "users", "companies", "commercials", "configuration",
         "scraping_sources", "sotradies", "company_sources",
-        "company_tenders", "sent_log",
+        "company_tenders", "sent_log", "source_accounts",
     }
     for table in sorted(required_tables):
         check(f"Table '{table}' existe", table in tables,
@@ -106,6 +107,7 @@ def main() -> None:
         n_sources = db.query(ScrapingSource).count()
         n_tenders = db.query(Sotradies).count()
         n_company_sources = db.query(CompanySource).count()
+        n_source_accounts = db.query(SourceAccount).count()
         n_company_tenders = db.query(CompanyTender).count()
 
         print(f"  Companies         : {n_companies}")
@@ -115,6 +117,7 @@ def main() -> None:
         print(f"  ScrapingSources   : {n_sources}")
         print(f"  Sotradies (offres): {n_tenders}")
         print(f"  CompanySources    : {n_company_sources}")
+        print(f"  SourceAccounts    : {n_source_accounts}")
         print(f"  CompanyTenders    : {n_company_tenders}")
 
         check("Au moins une Company existe", n_companies >= 1,

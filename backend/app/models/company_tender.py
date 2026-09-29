@@ -60,6 +60,10 @@ class CompanyTender(Base):
 
     acheteur_connu = Column(String(10), nullable=True)
 
+    # Retour utilisateur : "pertinent" | "pas_pertinent"
+    feedback = Column(String(20), nullable=True)
+    feedback_at = Column(DateTime, nullable=True)
+
     rappel_j3_envoye = Column(DateTime, nullable=True)
     rappel_j1_envoye = Column(DateTime, nullable=True)
 

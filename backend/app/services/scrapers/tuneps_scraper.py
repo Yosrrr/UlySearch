@@ -13,6 +13,7 @@ Avantages vs navigateur :
 Structure de réponse :
     {"code": "200", "payload": {"data": [...], "total": N}}
 """
+import base64
 import os
 from datetime import datetime, timedelta
 
@@ -77,6 +78,9 @@ def _pick_objet(item: dict) -> str:
 class TunepsScraper:
     source_name = "tuneps"
 
+    def __init__(self, auth=None):
+        self.auth = auth
+
     def _fetch_page(self, offset: int) -> tuple[list[dict], int]:
         """Retourne (items, total). Lève une exception en cas d'échec HTTP."""
         payload = {
@@ -89,10 +93,17 @@ class TunepsScraper:
             "sort": {"nameCol": "publicDt", "direction": "desc nulls last"},
         }
 
+        headers = dict(HEADERS)
+        if self.auth:
+            token = base64.b64encode(
+                f"{self.auth[0]}:{self.auth[1]}".encode("utf-8")
+            ).decode("ascii")
+            headers["Authorization"] = f"Basic {token}"
+
         response = Fetcher.post(
             API_URL,
             json=payload,
-            headers=HEADERS,
+            headers=headers,
             impersonate="chrome",
             timeout=REQUEST_TIMEOUT,
             verify=False  # Simule la signature réseau de Chrome

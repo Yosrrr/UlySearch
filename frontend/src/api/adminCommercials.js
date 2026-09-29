@@ -9,3 +9,6 @@ export const createCommercial = (payload) =>
 
 export const updateCommercial = (id, payload) =>
   apiClient.patch(`/admin/commercials/${id}`, payload).then((r) => r.data);
+
+export const deleteCommercial = (id) =>
+  apiClient.delete(`/admin/commercials/${id}`);

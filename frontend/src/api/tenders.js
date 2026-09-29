@@ -27,3 +27,8 @@ export async function exportTenders(filters, format) {
   });
   downloadBlob(response.data, `appels-offres-tenderscope.${format}`);
 }
+
+export async function updateTenderFeedback(id, feedback) {
+  const { data } = await apiClient.patch(`/tenders/${id}/feedback`, { feedback });
+  return data;
+}

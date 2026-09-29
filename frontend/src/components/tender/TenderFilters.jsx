@@ -1,15 +1,17 @@
 // src/components/tender/TenderFilters.jsx
-import { CATEGORY_LABELS, categoryLabel } from "../../utils/categories";
 import { useQuery } from "@tanstack/react-query";
-import { getRuntimeThresholds } from "../../api/config";
+import { getRuntimeThresholds, getCategories } from "../../api/config";
 
 const STATUTS = ["Tous", "nouveau", "retenu", "sans_suite"];
-const CATEGORIES = ["Toutes", ...Object.keys(CATEGORY_LABELS)];
-
 export default function TenderFilters({ value, onChange }) {
   const { data } = useQuery({
     queryKey: ["runtime-thresholds"],
     queryFn: getRuntimeThresholds,
+    staleTime: 60_000,
+  });
+  const { data: categories = [] } = useQuery({
+    queryKey: ["config-categories"],
+    queryFn: getCategories,
     staleTime: 60_000,
   });
   const instantThreshold = data?.score_instant_alert_threshold ?? 70;
@@ -32,9 +34,10 @@ export default function TenderFilters({ value, onChange }) {
         onChange={(e) => update("categorie", e.target.value)}
         className="w-52 rounded-lg border border-slate-200 px-3 py-2 text-sm"
       >
-        {CATEGORIES.map((c) => (
-          <option key={c} value={c}>
-            {c === "Toutes" ? "Toutes les catégories" : categoryLabel(c)}
+        <option value="Toutes">Toutes les catégories</option>
+        {categories.map((category) => (
+          <option key={category.id} value={category.id}>
+            {category.label || category.id}
           </option>
         ))}
       </select>
