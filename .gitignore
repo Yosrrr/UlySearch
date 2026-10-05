@@ -12,6 +12,7 @@ dist/
 *.pyc
 
 backend/run/
+backend/data_certs/
 backend/celerybeat-schedule.*
 backend/debug_onmp/
 debug_onmp/

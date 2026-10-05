@@ -35,12 +35,12 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db), admin=Depend
         )
 
     # Vérifier que l'entreprise existe
-    if payload.company_id is not None:
-        from app.models.company import Company
-        company = db.get(Company, payload.company_id)
-        if company is None:
+    if company is None:
             raise HTTPException(status_code=404, detail="Entreprise introuvable.")
-    ...
+
+    if db.query(User).filter_by(email=payload.email).first():
+        raise HTTPException(status_code=409, detail="Email déjà utilisé.")
+
     user = User(
         email=payload.email,
         nom=payload.nom,

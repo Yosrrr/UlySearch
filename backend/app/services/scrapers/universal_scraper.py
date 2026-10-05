@@ -132,6 +132,7 @@ def _enrich_raw_with_detail(
     result = call_local_llm_json(
         _DETAIL_SYSTEM,
         _DETAIL_PROMPT.format(page_text=detail_text),
+        num_predict=2048,
     )
 
     if not isinstance(result, dict):
@@ -251,7 +252,7 @@ def _fetch_browser(url: str, timeout: int = 45, auth=None) -> Optional[str]:
         with sync_playwright() as pw:
             browser = pw.chromium.launch(
                 headless=True,
-                args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+                args=["--disable-dev-shm-usage", "--disable-gpu"],
             )
             context = browser.new_context(
                 user_agent=_HEADERS["User-Agent"],

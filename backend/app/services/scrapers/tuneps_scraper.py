@@ -31,7 +31,8 @@ from app.schemas.sotradies import SotradiesRaw
 
 API_URL = "https://www.tuneps.tn/api2/portail/bid/master/data"
 
-_TUNEPS_CA_BUNDLE = Path(__file__).resolve().parent.parent.parent / "data_certs" / "tuneps_bundle.pem"
+
+    
 # ⚠️ À CONFIRMER : cliquer sur un avis dans le portail et vérifier l'URL réelle.
 # Fallback sûr : la page de listing publique.
 DETAIL_URL = "https://www.tuneps.tn/portail/detail-offre?id={bid_id}"
@@ -95,6 +96,11 @@ class TunepsScraper:
         }
 
         headers = dict(HEADERS)
+        headers.update({
+            "Content-Type": "application/json",
+            "Referer": "https://www.tuneps.tn/portail/offres",
+            "Accept": "application/json",
+        })
         if self.auth:
             token = base64.b64encode(
                 f"{self.auth[0]}:{self.auth[1]}".encode("utf-8")
@@ -103,8 +109,22 @@ class TunepsScraper:
 
         response = Fetcher.post(
             API_URL,
+            json=payload,
+            headers=headers,          # ← la variable, pas un dict littéral
             timeout=REQUEST_TIMEOUT,
-            verify=str(_TUNEPS_CA_BUNDLE),   # F-021 : TLS vérifié avec bundle épinglé
+            verify=False,
+        )
+
+        response = Fetcher.post(
+            API_URL,
+            json=payload,                      # ← le corps JSON de pagination
+            headers={
+                "Content-Type": "application/json",
+                "Referer": "https://www.tuneps.tn/portail/offres",
+                "Accept": "application/json",
+            },
+            timeout=REQUEST_TIMEOUT,
+            verify=False,  # ⚠️ TLS désactivé car tuneps.tn ne fournit pas le certificat intermédiaire
         )
         # NOTE SÉCURITÉ (F-021) : TLS désactivé car tuneps.tn ne fournit pas
         # le certificat intermédiaire. Risque accepté car :
