@@ -449,7 +449,36 @@ def _enrich_with_ai(db, record: Sotradies, effective_source: str, tender_id: str
         time.sleep(2)
         detail_text = fetch_detail_text(effective_source, record.lien)
         dump_path = dump_tender_to_txt(tender_id, record, detail_text)
-        extraction = filter_and_extract(dump_path.read_text(encoding="utf-8"), {})
+        # Charger les catégories combinées de tous les clients abonnés à cette offre
+        all_categories = {}
+        subscriptions = (
+            db.query(CompanyTender)
+            .filter(CompanyTender.tender_id == tender_id)
+            .all()
+        )
+        for ct in subscriptions:
+            config = db.query(Configuration).filter_by(company_id=ct.company_id).first()
+            if config and config.categories:
+                all_categories.update(config.categories)
+
+        retained_configs = (
+            db.query(Configuration.categories)
+            .join(CompanyTender, CompanyTender.company_id == Configuration.company_id)
+            .filter(
+                CompanyTender.tender_id == tender_id,
+                CompanyTender.decision == "retenu",
+            )
+            .all()
+        )
+        merged_categories = {}
+        for (cats,) in retained_configs:
+            if isinstance(cats, dict):
+                merged_categories.update(cats)
+
+        extraction = filter_and_extract(
+            dump_path.read_text(encoding="utf-8"),
+            merged_categories,
+        )
         if isinstance(extraction, dict) and extraction.get("raison") != "Erreur technique IA (locale)":
             ai_result = {**ai_result, **{k: v for k, v in extraction.items() if v not in (None, "", [])}}
         else:

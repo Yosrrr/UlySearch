@@ -28,7 +28,7 @@ from app.services.export_service import tenders_to_excel, tenders_to_pdf
 router = APIRouter(prefix="/tenders", tags=["tenders"])
 
 # Statuts autorisés côté client (cycle commercial)
-CLIENT_STATUTS = {"nouveau", "en_cours", "sans_suite", "gagne", "perdu"}
+CLIENT_STATUTS = {"nouveau", "en_cours", "sans_suite", "gagne", "perdu", "retenu"}
 # Statuts autorisés côté superadmin (vue brute legacy)
 SUPERADMIN_STATUTS = {"nouveau", "retenu", "sans_suite"}
 

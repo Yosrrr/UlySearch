@@ -296,7 +296,7 @@ def update_source(
     source_id: int,
     payload: SourceUpdate,
     db: Session = Depends(get_db),
-    user=Depends(require_admin_or_superadmin),
+    user=Depends(require_superadmin),  
 ):
     source = _visible_source(db, source_id, None)
 
@@ -407,8 +407,7 @@ def toggle_source(
             link = subscribe_source(db, company_id, source)
         else:
             link.actif = not link.actif
-            if link.actif:
-                source.actif = True
+            
 
         active = bool(link.actif)
 

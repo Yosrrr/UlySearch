@@ -9,7 +9,7 @@ from collections import defaultdict
 from datetime import UTC, date, datetime
 
 from sqlalchemy.orm import Session
-
+from datetime import timedelta
 from app.core.database import session_scope
 from app.core.templates import jinja_env
 from app.models.commercial import Commercial
@@ -160,7 +160,7 @@ def send_daily_digest(
         print("[notifier] Week-end : pas de digest.")
         return 0
 
-    target_date = target_date or datetime.now(UTC).date()
+    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=24)
     envoyes = 0
 
     with session_scope() as db:
@@ -186,12 +186,7 @@ def send_daily_digest(
                         CompanyTender.company_id == company.id,
                         CompanyTender.commercial_id == commercial.id,
                         CompanyTender.decision == "retenu",
-                        Sotradies.date_detection >= datetime.combine(
-                            target_date, datetime.min.time()
-                        ),
-                        Sotradies.date_detection < datetime.combine(
-                            target_date, datetime.max.time()
-                        ),
+                        Sotradies.date_detection >= cutoff,
                     )
                     .all()
                 )
