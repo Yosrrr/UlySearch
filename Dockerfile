@@ -25,5 +25,7 @@ RUN python -m pip install --no-cache-dir -r /app/backend/requirements.txt
 
 COPY backend/ /app/backend/
 COPY --from=frontend-build /build/frontend/dist/ /app/frontend/dist/
-
+RUN mkdir -p /app/backend/data /app/backend/debug_detail \
+    && chown -R pwuser:pwuser /app
+USER pwuser
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "10000", "--proxy-headers", "--forwarded-allow-ips", "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"]  

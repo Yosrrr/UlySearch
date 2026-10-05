@@ -27,15 +27,26 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db), admin=Depend
     if payload.profil not in VALID_PROFILES:
         raise HTTPException(status_code=400, detail="Profil invalide")
 
-    if db.query(User).filter_by(email=payload.email).first():
-        raise HTTPException(status_code=409, detail="Un compte avec cet email existe déjà")
+    # Un commercial ou admin client DOIT avoir une entreprise
+    if payload.profil in ("commercial", "admin", "user") and payload.company_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail="company_id est obligatoire pour ce profil.",
+        )
 
+    # Vérifier que l'entreprise existe
+    if payload.company_id is not None:
+        from app.models.company import Company
+        company = db.get(Company, payload.company_id)
+        if company is None:
+            raise HTTPException(status_code=404, detail="Entreprise introuvable.")
+    ...
     user = User(
         email=payload.email,
         nom=payload.nom,
         password_hash=hash_password(payload.password),
         profil=payload.profil,
-        actif=True,
+        company_id=payload.company_id,
     )
     db.add(user)
     db.commit()

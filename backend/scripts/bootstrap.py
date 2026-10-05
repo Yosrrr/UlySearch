@@ -29,7 +29,44 @@ def seed_demo_tenders(db) -> None:
         return
     # ... (inchangé)
 
+def _seed_dedicated_sources(db) -> None:
+    """Crée les sources dédiées ONMP/TUNEPS si absentes (idempotent, par nom).
 
+    Sans ces lignes, un déploiement neuf ne collecte rien : les connecteurs
+    dédiés ne sont instanciés que si une ligne scraping_sources existe
+    et qu'au moins une entreprise y est abonnée (F-029).
+    """
+    from app.models.scraping_source import ScrapingSource
+
+    dedicated = [
+        {"nom": "ONMP", "url": "https://www.marchespublics.gov.tn/"},
+        {"nom": "TUNEPS", "url": "https://www.tuneps.tn/portail/offres"},
+    ]
+    created = 0
+    for spec in dedicated:
+        exists = (
+            db.query(ScrapingSource)
+            .filter(
+                ScrapingSource.type == "dedie",
+                ScrapingSource.nom.ilike(spec["nom"]),
+            )
+            .first()
+        )
+        if exists is None:
+            db.add(ScrapingSource(
+                nom=spec["nom"],
+                type="dedie",
+                url=spec["url"],
+                actif=True,
+                use_browser=False,
+                max_pages=3,
+            ))
+            created += 1
+            print(f"[bootstrap] Source dédiée créée : {spec['nom']}")
+        else:
+            print(f"[bootstrap] Source dédiée déjà présente : {exists.nom}")
+    if created:
+        db.commit()
 def _warn_if_no_commercials(db) -> None:
     """Avertissement clair au premier déploiement, sans jamais suggérer
     un email par défaut. L'ajout des commerciaux se fait via l'API
@@ -79,6 +116,7 @@ def bootstrap() -> None:
         else:
             print("Schéma initialisé; aucun administrateur demandé.")
 
+        _seed_dedicated_sources(db)
         _warn_if_no_commercials(db)
         seed_demo_tenders(db)
 

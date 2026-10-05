@@ -16,7 +16,8 @@ class UserCreate(BaseModel):
     email: EmailStr
     nom: str
     password: str
-    profil: str = "user"  # "admin" | "user" | "superadmin"
+    profil: str = "user"
+    company_id: int | None = None # "admin" | "user" | "superadmin"
 
 
 class UserUpdate(BaseModel):

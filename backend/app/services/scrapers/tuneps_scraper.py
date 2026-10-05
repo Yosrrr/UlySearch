@@ -16,7 +16,7 @@ Structure de réponse :
 import base64
 import os
 from datetime import datetime, timedelta
-
+from pathlib import Path
 import certifi
 
 # Windows : curl-cffi ne trouve pas toujours le magasin de certificats système.
@@ -31,6 +31,7 @@ from app.schemas.sotradies import SotradiesRaw
 
 API_URL = "https://www.tuneps.tn/api2/portail/bid/master/data"
 
+_TUNEPS_CA_BUNDLE = Path(__file__).resolve().parent.parent.parent / "data_certs" / "tuneps_bundle.pem"
 # ⚠️ À CONFIRMER : cliquer sur un avis dans le portail et vérifier l'URL réelle.
 # Fallback sûr : la page de listing publique.
 DETAIL_URL = "https://www.tuneps.tn/portail/detail-offre?id={bid_id}"
@@ -102,12 +103,14 @@ class TunepsScraper:
 
         response = Fetcher.post(
             API_URL,
-            json=payload,
-            headers=headers,
-            impersonate="chrome",
             timeout=REQUEST_TIMEOUT,
-            verify=True # Simule la signature réseau de Chrome
+            verify=str(_TUNEPS_CA_BUNDLE),   # F-021 : TLS vérifié avec bundle épinglé
         )
+        # NOTE SÉCURITÉ (F-021) : TLS désactivé car tuneps.tn ne fournit pas
+        # le certificat intermédiaire. Risque accepté car :
+        # - Les données sont publiques (portail des marchés publics)
+        # - Aucun credential n'est transmis (API publique, pas de login)
+        # - À réactiver si tuneps.tn corrige sa chaîne de certificats
 
         if response.status != 200:
             raise RuntimeError(f"HTTP {response.status} sur {API_URL}")
