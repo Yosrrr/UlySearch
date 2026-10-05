@@ -106,7 +106,7 @@ class TunepsScraper:
             headers=headers,
             impersonate="chrome",
             timeout=REQUEST_TIMEOUT,
-            verify=False  # Simule la signature réseau de Chrome
+            verify=True # Simule la signature réseau de Chrome
         )
 
         if response.status != 200:

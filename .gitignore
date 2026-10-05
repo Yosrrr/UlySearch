@@ -55,3 +55,9 @@ backend/gen_migration.py
 
 *.md
 *.txt
+.env
+.env.*
+*.env
+backend/.env
+frontend/.env
+celerybeat-schedule*

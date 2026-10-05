@@ -6,12 +6,13 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM mcr.microsoft.com/playwright/python:v1.47.0-noble
-
+FROM mcr.microsoft.com/playwright/python:v1.49.1-noble
+RUN playwright install chromium
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/backend \
     PORT=10000
+
 
 WORKDIR /app
 
@@ -25,4 +26,4 @@ RUN python -m pip install --no-cache-dir -r /app/backend/requirements.txt
 COPY backend/ /app/backend/
 COPY --from=frontend-build /build/frontend/dist/ /app/frontend/dist/
 
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000} --proxy-headers --forwarded-allow-ips='*'"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "10000", "--proxy-headers", "--forwarded-allow-ips", "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"]  

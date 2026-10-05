@@ -13,7 +13,8 @@ from app.api.deps import require_superadmin
 
 router = APIRouter(prefix="/admin/users", tags=["admin-users"])
 
-VALID_PROFILES = ("user", "admin", "superadmin")
+VALID_PROFILES = ("user", "admin", "commercial", "superadmin")
+
 
 
 @router.get("", response_model=list[UserOut])

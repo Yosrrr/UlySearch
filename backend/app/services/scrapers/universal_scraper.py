@@ -20,6 +20,8 @@ import re as _re
 import asyncio
 import inspect
 import os
+import ipaddress
+import socket
 from datetime import datetime
 from pathlib import Path
 import logging
@@ -83,7 +85,10 @@ Retourne exactement ce JSON (null si absent) :
 }}"""
 def _fetch_detail_page(url: str, use_browser: bool = False, auth=None) -> Optional[str]:
     """Récupère le texte brut d'une page de détail d'offre."""
-    html = _fetch_page(url, use_browser=use_browser, auth=auth)
+    if not _is_safe_url(url):
+        logger.warning(f"[SSRF] Page de détail bloquée : {url}")
+        return None
+    html = _fetch_page(url, use_browser=use_browser)
     if not html:
         return None
     try:
@@ -168,13 +173,36 @@ def _enrich_raw_with_detail(
         lieu_ouverture_offres=_pick("lieu_ouverture_offres", None),
         caractere_prix=_pick("caractere_prix", None),
     )
-
-
-def _fetch_simple(url: str, timeout: int = 30, auth=None) -> Optional[str]:
-    """HTTP GET classique (rapide, sans JavaScript)."""
+def _is_safe_url(url: str) -> bool:
+    """
+    Vérifie que l'URL ne pointe pas vers une adresse interne.
+    Résout le DNS et bloque les IP privées, loopback, link-local.
+    """
     try:
-        with httpx.Client(follow_redirects=True, timeout=timeout, auth=auth) as client:
-            resp = client.get(url, headers=_HEADERS)
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+
+        # Résolution DNS réelle
+        addr_infos = socket.getaddrinfo(hostname, parsed.port or 443)
+        for family, _, _, _, sockaddr in addr_infos:
+            ip = ipaddress.ip_address(sockaddr[0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                logger.warning(f"[SSRF] URL bloquée (IP interne) : {url} → {ip}")
+                return False
+        return True
+    except (socket.gaierror, ValueError, OSError) as exc:
+        logger.warning(f"[SSRF] Résolution DNS échouée pour {url}: {exc}")
+        return False
+
+def _fetch_simple(url: str, timeout: int = 30, auth: tuple[str, str] | None = None) -> Optional[str]:
+    """HTTP GET classique (rapide, sans JavaScript)."""
+    if not _is_safe_url(url):
+        return None
+    try:
+        with httpx.Client(follow_redirects=True, timeout=timeout) as client:
+            resp = client.get(url, headers=_HEADERS, auth=auth)
             resp.raise_for_status()
             content_type = resp.headers.get("content-type", "")
             if "html" not in content_type and "text" not in content_type:
@@ -196,6 +224,9 @@ def _fetch_browser(url: str, timeout: int = 45, auth=None) -> Optional[str]:
     1. networkidle (sites statiques)
     2. domcontentloaded (SPA, WebSocket, sites avec connexions permanentes)
     """
+    if not _is_safe_url(url):
+        return None
+    
     try:
         from playwright.sync_api import TimeoutError as PwTimeout, sync_playwright
     except ImportError:
@@ -305,9 +336,9 @@ def _needs_js(html: str) -> bool:
     )
 
 
-def _fetch_page(url: str, use_browser: bool = False, auth=None) -> Optional[str]:
+def _fetch_page(url: str, use_browser: bool = False, auth: tuple[str, str] | None = None) -> Optional[str]:
     if use_browser:
-        return _fetch_browser(url, auth=auth) or _fetch_simple(url, auth=auth)
+        return _fetch_browser(url) or _fetch_simple(url, auth=auth)
     html = _fetch_simple(url, auth=auth)
     if html and _needs_js(html):
         logger.info(f"{url} nécessite JavaScript → Playwright")
@@ -763,7 +794,7 @@ class UniversalScraper:
         use_browser: bool = False,
         max_pages: int = 3,
         default_buyer: str = "Non précisé",
-        auth=None,
+        auth: tuple[str, str] | None = None,
     ):
         self.source_name = source_name
         self.url = url

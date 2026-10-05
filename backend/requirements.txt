@@ -23,7 +23,7 @@ Pillow==10.4.0
 
 scrapling[fetchers]==0.4.15
 scrapling[playwright]==0.4.15
-playwright==1.62.0
+playwright==1.49.1
 
 python-multipart==0.0.20
 

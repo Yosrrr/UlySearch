@@ -126,6 +126,7 @@ def _build_scrapers(company_id: int | None = None) -> list:
                 url=url,
                 use_browser=bool(source["use_browser"]),
                 max_pages=int(source["max_pages"] or 3),
+                auth=auth,
                 
             )
         else:
