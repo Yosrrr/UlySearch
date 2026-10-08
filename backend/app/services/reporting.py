@@ -1,83 +1,136 @@
-"""Layer 9 — Reporting périodique automatique à la direction."""
-from datetime import datetime, timedelta
+"""Layer 9 — Rapport périodique direction.
+
+F-033 : ne plus s'appuyer sur Sotradies.score_details / commercial_assigne
+(legacy). Compteurs issus de company_tenders (+ sotradies pour détection/source).
+"""
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+
+from sqlalchemy import func
 
 from app.core.config import settings
 from app.core.database import session_scope
 from app.core.templates import jinja_env as env
+from app.models.commercial import Commercial
+from app.models.company_tender import CompanyTender
 from app.models.sent_log import SentLog
 from app.models.sotradies import Sotradies
 from app.services.mailer import send_email
 
 
-def _best_score(score_details: dict | None) -> int:
-    if not score_details:
-        return 0
-    best = 0
-    for value in score_details.values():
-        if isinstance(value, dict):
-            score = int(value.get("score", 0) or 0)
-            if score > best:
-                best = score
-    return best
-
-
 def send_periodic_report(days: int = 7) -> dict:
     """
-    Envoie un rapport périodique à la direction.
-
-    Retourne un dict de statut exploitable par Celery/logs.
+    Envoie un rapport agrégé à DIRECTION_EMAIL.
+    Retourne un dict de statut pour Celery / logs.
     """
-    if not settings.DIRECTION_EMAIL:
+    if not getattr(settings, "DIRECTION_EMAIL", None):
         print("[reporting] DIRECTION_EMAIL absent — rapport non envoyé.")
         return {"status": "skipped", "reason": "missing_direction_email"}
 
-    depuis = datetime.utcnow() - timedelta(days=days)
+    maintenant = datetime.now(UTC).replace(tzinfo=None)
+    depuis = maintenant - timedelta(days=days)
 
     with session_scope() as db:
-        marches = (
-            db.query(Sotradies)
+        total_detectes = (
+            db.query(func.count(Sotradies.id))
             .filter(Sotradies.date_detection >= depuis)
-            .all()
+            .scalar()
+            or 0
         )
 
-        total_detectes = len(marches)
-        total_retenus = sum(1 for m in marches if _best_score(m.score_details) > 0)
-        total_acheteurs_connus = sum(1 for m in marches if m.acheteur_connu == "Oui")
+        total_retenus = (
+            db.query(func.count(CompanyTender.id))
+            .join(Sotradies, Sotradies.id == CompanyTender.tender_id)
+            .filter(
+                Sotradies.date_detection >= depuis,
+                CompanyTender.decision == "retenu",
+            )
+            .scalar()
+            or 0
+        )
+
+        total_acheteurs_connus = (
+            db.query(func.count(CompanyTender.id))
+            .join(Sotradies, Sotradies.id == CompanyTender.tender_id)
+            .filter(
+                Sotradies.date_detection >= depuis,
+                CompanyTender.decision == "retenu",
+                CompanyTender.acheteur_connu == "Oui",
+            )
+            .scalar()
+            or 0
+        )
 
         total_alertes = (
-            db.query(SentLog)
+            db.query(func.count(SentLog.id))
             .filter(
                 SentLog.canal == "instantane",
                 SentLog.date_envoi >= depuis,
             )
-            .count()
+            .scalar()
+            or 0
         )
 
-        par_commercial_raw = {}
-        par_source_raw = {}
+        rows_com = (
+            db.query(Commercial.nom, func.count(CompanyTender.id))
+            .join(
+                CompanyTender,
+                CompanyTender.commercial_id == Commercial.id,
+            )
+            .join(Sotradies, Sotradies.id == CompanyTender.tender_id)
+            .filter(
+                Sotradies.date_detection >= depuis,
+                CompanyTender.decision == "retenu",
+            )
+            .group_by(Commercial.nom)
+            .all()
+        )
+        par_commercial = [
+            {"commercial": (nom or "Non assigné"), "nombre": int(n)}
+            for nom, n in sorted(rows_com, key=lambda x: (x[0] or ""))
+        ]
 
-        for m in marches:
-            if m.commercial_assigne:
-                par_commercial_raw[m.commercial_assigne] = (
-                    par_commercial_raw.get(m.commercial_assigne, 0) + 1
-                )
-            par_source_raw[m.source] = par_source_raw.get(m.source, 0) + 1
+        # Retenus sans commercial
+        sans_com = (
+            db.query(func.count(CompanyTender.id))
+            .join(Sotradies, Sotradies.id == CompanyTender.tender_id)
+            .filter(
+                Sotradies.date_detection >= depuis,
+                CompanyTender.decision == "retenu",
+                CompanyTender.commercial_id.is_(None),
+            )
+            .scalar()
+            or 0
+        )
+        if sans_com:
+            par_commercial.append(
+                {"commercial": "Non assigné", "nombre": int(sans_com)}
+            )
 
-    html = env.get_template("periodic_report_email.html").render(
-        periode=f"{depuis.strftime('%d/%m/%Y')} — {datetime.utcnow().strftime('%d/%m/%Y')}",
-        total_detectes=total_detectes,
-        total_retenus=total_retenus,
-        total_alertes=total_alertes,
-        total_acheteurs_connus=total_acheteurs_connus,
-        par_commercial=[
-            {"commercial": k, "nombre": v}
-            for k, v in sorted(par_commercial_raw.items())
-        ],
-        par_source=[
-            {"source": k, "nombre": v}
-            for k, v in sorted(par_source_raw.items())
-        ],
-    )
+        rows_src = (
+            db.query(Sotradies.source, func.count(Sotradies.id))
+            .filter(Sotradies.date_detection >= depuis)
+            .group_by(Sotradies.source)
+            .all()
+        )
+        par_source = [
+            {"source": (src or "—"), "nombre": int(n)}
+            for src, n in sorted(rows_src, key=lambda x: (x[0] or ""))
+        ]
+
+        html = env.get_template("periodic_report_email.html").render(
+            periode=(
+                f"{depuis.strftime('%d/%m/%Y')} — "
+                f"{maintenant.strftime('%d/%m/%Y')}"
+            ),
+            total_detectes=total_detectes,
+            total_retenus=total_retenus,
+            total_alertes=total_alertes,
+            total_acheteurs_connus=total_acheteurs_connus,
+            par_commercial=par_commercial,
+            par_source=par_source,
+        )
 
     success = send_email(
         settings.DIRECTION_EMAIL,
@@ -88,9 +141,17 @@ def send_periodic_report(days: int = 7) -> dict:
     if success:
         print(
             f"[reporting] Rapport envoyé à {settings.DIRECTION_EMAIL} "
-            f"({total_detectes} marchés détectés sur {days} jours)"
+            f"(détectés={total_detectes}, retenus={total_retenus}, {days} j)"
         )
-        return {"status": "sent", "total_detectes": total_detectes}
+        return {
+            "status": "sent",
+            "total_detectes": total_detectes,
+            "total_retenus": total_retenus,
+        }
 
     print("[reporting] Échec envoi rapport direction.")
-    return {"status": "error", "total_detectes": total_detectes}
+    return {
+        "status": "error",
+        "total_detectes": total_detectes,
+        "total_retenus": total_retenus,
+    }

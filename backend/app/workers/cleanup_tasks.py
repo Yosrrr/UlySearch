@@ -19,6 +19,7 @@ Politique appliquée :
 
 from datetime import datetime, timedelta, UTC
 from pathlib import Path
+from app.core.paths import DEBUG_DETAIL_DIR
 
 from app.core.database import session_scope
 from app.models.audit_log import AuditLog

@@ -1,6 +1,7 @@
 """Lit le fichier Excel des clients/acheteurs historiques et l'importe en base."""
 import pandas as pd
 from sqlalchemy.orm import Session
+from app.core.paths import DEBUG_DETAIL_DIR
 
 from app.models.known_buyer import KnownBuyer
 

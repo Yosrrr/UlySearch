@@ -54,111 +54,102 @@ def find_matching_buyer(
     known_buyers: list[KnownBuyer] | None = None,
 ) -> KnownBuyer | None:
     """
-    Retourne l'objet KnownBuyer correspondant si un rapprochement fiable
-    est trouvé, sinon None.
+    Retourne le KnownBuyer correspondant dans la liste FOURNIE, sinon None.
+
+    Isolation multi-tenant : cette fonction ne lit jamais la base elle-même.
+    L'appelant doit fournir la liste des acheteurs d'UNE seule entreprise.
     """
-    close_db = False
+    if not known_buyers:
+        return None
 
-    if known_buyers is None:
-        db = SessionLocal()
-        known_buyers = db.query(KnownBuyer).all()
-        close_db = True
-    else:
-        db = None
+    target = _normalize(acheteur_scrape)
+    if not target:
+        return None
 
-    try:
-        if not known_buyers:
-            return None
+    candidates: list[tuple[str, KnownBuyer]] = []
+    for kb in known_buyers:
+        candidates.append((kb.nom_acheteur, kb))
+        if kb.variantes:
+            for variante in kb.variantes.split(";"):
+                variante = variante.strip()
+                if variante:
+                    candidates.append((variante, kb))
 
-        target = _normalize(acheteur_scrape)
-        if not target:
-            return None
+    best_score = 0
+    best_kb = None
+    for candidate_name, kb in candidates:
+        global_score = fuzz.token_sort_ratio(target, _normalize(candidate_name))
+        if global_score < GLOBAL_MATCH_THRESHOLD:
+            continue
 
-        candidates: list[tuple[str, KnownBuyer]] = []
+        distinctive_score = _distinctive_similarity(acheteur_scrape, candidate_name)
+        if distinctive_score < DISTINCTIVE_WORD_THRESHOLD:
+            continue
 
-        for kb in known_buyers:
-            candidates.append((kb.nom_acheteur, kb))
+        if global_score > best_score:
+            best_score = global_score
+            best_kb = kb
 
-            if kb.variantes:
-                for variante in kb.variantes.split(";"):
-                    variante = variante.strip()
-                    if variante:
-                        candidates.append((variante, kb))
+    return best_kb  
 
-        best_score = 0
-        best_kb = None
 
-        for candidate_name, kb in candidates:
-            global_score = fuzz.token_sort_ratio(
-                target,
-                _normalize(candidate_name),
-            )
-
-            if global_score < GLOBAL_MATCH_THRESHOLD:
-                continue
-
-            distinctive_score = _distinctive_similarity(
-                acheteur_scrape,
-                candidate_name,
-            )
-
-            if distinctive_score < DISTINCTIVE_WORD_THRESHOLD:
-                continue
-
-            if global_score > best_score:
-                best_score = global_score
-                best_kb = kb
-
-        return best_kb
-
-    finally:
-        if close_db and db is not None:
-            db.close()
+_UNKNOWN_BUYERS = {"", "non precise", "non precisee", "inconnu", "n/a", "-"}
 
 
 def match_buyer(
     acheteur_scrape: str,
     company_id: int | None = None,
-    known_buyers: list[KnownBuyer] | None = None,
 ) -> str | None:
     """
-    Retourne "Oui" | "Non" | None.
+    Retourne "Oui", "Non" ou None.
 
-    company_id est OBLIGATOIRE : sans lui, on chargerait le referentiel
-    de tous les clients (violation de l'isolation multi-tenant).
+    Isolation multi-tenant : sans company_id, aucune recherche n'est faite.
+    On ne compare jamais un acheteur à la liste d'une autre entreprise.
     """
-    if company_id is None and known_buyers is None:
-        raise ValueError(
-            "match_buyer : company_id obligatoire (isolation multi-tenant)."
-        )
+    if company_id is None:
+        return None
+    if _normalize(acheteur_scrape) in _UNKNOWN_BUYERS:
+        return None
 
-    if known_buyers is None:
-        db = SessionLocal()
-        try:
-            known_buyers = (
-                db.query(KnownBuyer)
-                .filter(KnownBuyer.company_id == company_id)
-                .all()
-            )
-        finally:
-            db.close()
+    db = SessionLocal()
+    try:
+        known_buyers = (
+            db.query(KnownBuyer)
+            .filter(KnownBuyer.company_id == company_id)
+            .all()
+        )
+    finally:
+        db.close()
+
+    if not known_buyers:
+        return None
 
     best_kb = find_matching_buyer(acheteur_scrape, known_buyers)
     return best_kb.client_sotradies if best_kb else None
-
-
-def match_buyer_detail(acheteur_scrape: str) -> tuple[str | None, str | None]:
+def match_buyer_detail(
+    acheteur_scrape: str,
+    company_id: int | None = None,
+) -> tuple[str | None, str | None]:
     """
-    Retourne le statut client ET le nom de l'acheteur connu matché.
-
-    Exemple :
-    ("Oui", "Société des Transports de Tunis")
-    ("Non", "Office National de l'Assainissement")
-    (None, None)
+    Retourne (statut client, nom de l'acheteur connu), ou (None, None).
+    Même règle d'isolation : company_id obligatoire.
     """
-    best_kb = find_matching_buyer(acheteur_scrape)
-
-    if not best_kb:
+    if company_id is None:
+        return None, None
+    if _normalize(acheteur_scrape) in _UNKNOWN_BUYERS:
         return None, None
 
+    db = SessionLocal()
+    try:
+        known_buyers = (
+            db.query(KnownBuyer)
+            .filter(KnownBuyer.company_id == company_id)
+            .all()
+        )
+    finally:
+        db.close()
+
+    best_kb = find_matching_buyer(acheteur_scrape, known_buyers) if known_buyers else None
+    if not best_kb:
+        return None, None
     return best_kb.client_sotradies, best_kb.nom_acheteur

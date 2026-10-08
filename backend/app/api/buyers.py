@@ -2,7 +2,7 @@ import io
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from sqlalchemy.orm import Session
 from fastapi import BackgroundTasks
-from app.services.buyer_rematcher import rematch_all_tenders
+from app.services.buyer_rematcher import rematch_company_tenders 
 from app.core.database import get_db
 from app.models.known_buyer import KnownBuyer
 from app.schemas.buyer import BuyerOut, BuyerCreate, BuyerUpdate
@@ -64,7 +64,7 @@ def create_buyer(
     )
     db.add(buyer)
     db.commit()
-    background_tasks.add_task(rematch_all_tenders)
+    background_tasks.add_task(rematch_company_tenders, buyer.company_id)
     db.refresh(buyer)
     
     return buyer
@@ -145,7 +145,7 @@ def update_buyer(
         buyer.notes = payload.notes
 
     db.commit()
-    background_tasks.add_task(rematch_all_tenders)
+    background_tasks.add_task(rematch_company_tenders, buyer.company_id)
     db.refresh(buyer)
     
     return buyer

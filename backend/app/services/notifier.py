@@ -7,9 +7,10 @@ CompanyTender retenus, envoyées uniquement à SES commerciaux.
 import html
 from collections import defaultdict
 from datetime import UTC, date, datetime
-
-from sqlalchemy.orm import Session
 from datetime import timedelta
+from sqlalchemy import or_
+from app.models.sotradies import Sotradies
+from sqlalchemy.orm import Session
 from app.core.database import session_scope
 from app.core.templates import jinja_env
 from app.models.commercial import Commercial
@@ -17,7 +18,7 @@ from app.models.company import Company
 from app.models.company_tender import CompanyTender
 from app.models.configuration import Configuration
 from app.models.sent_log import SentLog
-from app.models.sotradies import Sotradies
+
 from app.services.mailer import send_email
 
 
@@ -65,14 +66,23 @@ def dispatch_new_tenders(force: bool = False) -> int:
         configs = _configs_by_company(db)
         deja_envoyes = _sent_ids(db, "instantane")
 
+        # Alerte instantanée = offres détectées récemment uniquement.
+        # Un recalcul ou un nouveau score ne transforme pas une vieille offre en urgence.
+        cutoff_instant = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=48)
         matches = (
             db.query(CompanyTender)
+            .join(Sotradies, Sotradies.id == CompanyTender.tender_id)
             .filter(
                 CompanyTender.decision == "retenu",
                 CompanyTender.statut == "nouveau",
                 CompanyTender.commercial_id.isnot(None),
+                Sotradies.date_detection >= cutoff_instant,
+                CompanyTender.statut.notin_(["gagne", "perdu", "sans_suite"]),
+                or_(CompanyTender.feedback.is_(None),
+                    CompanyTender.feedback != "pas_pertinent"),
             )
             .all()
+        
         )
 
         # Charger tous les commerciaux et marchés concernés en une fois
@@ -160,7 +170,7 @@ def send_daily_digest(
         print("[notifier] Week-end : pas de digest.")
         return 0
 
-    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=24)
+    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=4)
     envoyes = 0
 
     with session_scope() as db:
@@ -186,7 +196,8 @@ def send_daily_digest(
                         CompanyTender.company_id == company.id,
                         CompanyTender.commercial_id == commercial.id,
                         CompanyTender.decision == "retenu",
-                        Sotradies.date_detection >= cutoff,
+                        or_(CompanyTender.feedback.is_(None),
+                            CompanyTender.feedback != "pas_pertinent"),
                     )
                     .all()
                 )
@@ -265,6 +276,8 @@ def send_reminders(force: bool = False) -> int:
                 CompanyTender.decision == "retenu",
                 CompanyTender.commercial_id.isnot(None),
                 CompanyTender.statut.notin_(["gagne", "perdu", "sans_suite"]),
+                or_(CompanyTender.feedback.is_(None),
+                    CompanyTender.feedback != "pas_pertinent"),
             )
             .all()
         )

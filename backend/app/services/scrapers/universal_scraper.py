@@ -196,13 +196,18 @@ def _is_safe_url(url: str) -> bool:
     except (socket.gaierror, ValueError, OSError) as exc:
         logger.warning(f"[SSRF] Résolution DNS échouée pour {url}: {exc}")
         return False
-
+def _check_request(request) -> None:
+    """Appelé par httpx avant CHAQUE requête, redirections comprises."""
+    if not _is_safe_url(str(request.url)):
+        raise httpx.RequestError(f"URL bloquée (adresse interne) : {request.url}", request=request)
+    
 def _fetch_simple(url: str, timeout: int = 30, auth: tuple[str, str] | None = None) -> Optional[str]:
     """HTTP GET classique (rapide, sans JavaScript)."""
     if not _is_safe_url(url):
         return None
     try:
-        with httpx.Client(follow_redirects=True, timeout=timeout) as client:
+        with httpx.Client(follow_redirects=True, timeout=timeout,
+                          event_hooks={"request": [_check_request]}) as client:
             resp = client.get(url, headers=_HEADERS, auth=auth)
             resp.raise_for_status()
             content_type = resp.headers.get("content-type", "")

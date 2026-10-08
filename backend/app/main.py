@@ -21,7 +21,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.core.config import settings
 from app.core.init_config import init_default_configuration
 from app.core.rate_limiter import limiter
-
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 # ---------------------------------------------------------------------------
 # Modèles SQLAlchemy
@@ -67,6 +68,7 @@ from app.api.admin_commercials import (
 from app.api.admin_sources import (   
     router as admin_sources_router,
 )
+from contextlib import asynccontextmanager
 from app.api.admin_companies import router as admin_companies_router
 from app.api.audit import router as audit_router   
 from app.api.buyers import router as buyers_router   
@@ -89,8 +91,13 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 # Application FastAPI
 # ---------------------------------------------------------------------------
 
+_is_production = str(settings.ENV).lower() == "production"
+
 app = FastAPI(
     title=settings.APP_NAME,
+    docs_url=None if _is_production else "/docs",
+    redoc_url=None if _is_production else "/redoc",
+    openapi_url=None if _is_production else "/openapi.json",
 )
 
 
@@ -184,9 +191,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self'; "
-            "style-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "img-src 'self' data:; "
-            "font-src 'self'; "
+            "font-src 'self' https://fonts.gstatic.com; "
             "connect-src 'self'; "
             "frame-ancestors 'none'; "
             "base-uri 'self'; "
@@ -215,16 +222,12 @@ app.add_middleware(
 # Démarrage
 # ---------------------------------------------------------------------------
 
-@app.on_event("startup")
-async def startup_event():
-    """
-    Alembic gère le schéma de la base :
 
-        alembic upgrade head
 
-    Ici, on initialise uniquement la configuration métier par défaut.
-    """
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     init_default_configuration()
+    yield
 
 
 # ---------------------------------------------------------------------------
@@ -250,13 +253,43 @@ app.include_router(registration_router, prefix="/api")
 # Health check
 # ---------------------------------------------------------------------------
 
-@app.get("/health", tags=["health"])
-def health_check():
-    return {
+
+@app.get("/health")
+def health():
+    """Liveness + deps (DB, Redis). 200 si ok, 503 si degraded."""
+    checks: dict = {
         "status": "ok",
         "app": settings.APP_NAME,
         "env": settings.ENV,
     }
+
+    try:
+        from app.core.database import SessionLocal
+        db = SessionLocal()
+        try:
+            db.execute(text("SELECT 1"))
+        finally:
+            db.close()
+        checks["database"] = "ok"
+    except Exception as exc:
+        checks["database"] = f"error:{type(exc).__name__}"
+        checks["status"] = "degraded"
+
+    try:
+        import redis as _redis
+        r = _redis.Redis.from_url(
+            settings.REDIS_URL,
+            socket_connect_timeout=1,
+            socket_timeout=1,
+        )
+        r.ping()
+        checks["redis"] = "ok"
+    except Exception as exc:
+        checks["redis"] = f"error:{type(exc).__name__}"
+        checks["status"] = "degraded"
+
+    code = 200 if checks["status"] == "ok" else 503
+    return JSONResponse(content=checks, status_code=code)
 
 
 # ---------------------------------------------------------------------------

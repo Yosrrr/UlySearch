@@ -85,7 +85,9 @@ def score_tender_full(
         dynamic_categories,
     )
     categorie_ia = ai_result.get("categorie")
-    ai_score = max(0, min(100, int(ai_result.get("score", 0) or 0)))
+    # L'IA seule ne peut jamais déclencher une alerte instantanée (> 70)
+    AI_ONLY_MAX_SCORE = 60
+    ai_score = max(0, min(AI_ONLY_MAX_SCORE, int(ai_result.get("score", 0) or 0)))
 
     if (
         ai_result.get("pertinent") is True

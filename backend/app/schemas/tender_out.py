@@ -176,3 +176,15 @@ def to_tender_out_from_match(match, tender, commercial_nom: str | None = None) -
 # Alias de compatibilite pour l'ancien code
 def to_tender_out(t) -> TenderOut:
     return to_tender_out_from_sotradies(t)
+
+
+class TenderListPage(BaseModel):
+    
+    items: list[TenderOut]
+    total: int
+    limit: int
+    offset: int
+
+    @property
+    def has_more(self) -> bool:
+        return self.offset + len(self.items) < self.total

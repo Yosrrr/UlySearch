@@ -9,7 +9,8 @@ from sqlalchemy import func
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-
+from app.services.buyer_rematcher import rematch_all_tenders
+from app.services.buyer_rematcher import rematch_company_tenders
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
@@ -19,16 +20,18 @@ from app.models.company_tender import CompanyTender
 from app.models.sotradies import Sotradies
 from app.schemas.tender_out import (
     TenderOut,
+    TenderListPage,
     TenderStatusUpdate,
     to_tender_out_from_match,
     to_tender_out_from_sotradies,
 )
 from app.services.export_service import tenders_to_excel, tenders_to_pdf
 
+
 router = APIRouter(prefix="/tenders", tags=["tenders"])
 
 # Statuts autorisés côté client (cycle commercial)
-CLIENT_STATUTS = {"nouveau", "en_cours", "sans_suite", "gagne", "perdu", "retenu"}
+CLIENT_STATUTS = {"nouveau", "en_cours", "sans_suite", "gagne", "perdu"}
 # Statuts autorisés côté superadmin (vue brute legacy)
 SUPERADMIN_STATUTS = {"nouveau", "retenu", "sans_suite"}
 
@@ -61,34 +64,40 @@ def _commercial_name(db: Session, commercial_id: int | None) -> str | None:
 def _filtered_for_client(
     db: Session,
     company_id: int,
+    user: dict,
     search: str | None,
     commercial: str | None,
     statut: str | None,
     categorie: str | None,
     score_min: int | None,
     include_rejected: bool,
-    *,
-    user: dict,
-) -> list[TenderOut]:
+    limit: int | None = None,
+    offset: int = 0,
+) -> tuple[list[TenderOut], int]:
+    """
+    retourne (page_items, total_filtré).
+    total = nombre après TOUS les filtres (SQL + Python).
+    limit=None → pas de coupe (export).
+    """
     query = (
         db.query(CompanyTender, Sotradies)
         .join(Sotradies, Sotradies.id == CompanyTender.tender_id)
         .filter(CompanyTender.company_id == company_id)
     )
+
+    # ── Isolation commercial ──
     if user.get("profil") == "commercial":
-        email_connecte = str(user.get("sub") or "").strip().lower()
         moi = (
             db.query(Commercial)
             .filter(
                 Commercial.company_id == company_id,
-                func.lower(Commercial.email) == email_connecte,
+                Commercial.email == user.get("sub"),
                 Commercial.actif.is_(True),
             )
-            .order_by(Commercial.id)
-            .first()
+            .one_or_none()
         )
         if moi is None:
-            return []
+            return [], 0
         query = query.filter(CompanyTender.commercial_id == moi.id)
 
     if search:
@@ -98,7 +107,6 @@ def _filtered_for_client(
         )
 
     if statut and statut != "Tous":
-        # "retenu" côté UI client = decision moteur
         if statut == "retenu":
             query = query.filter(CompanyTender.decision == "retenu")
         elif statut == "rejete":
@@ -107,8 +115,6 @@ def _filtered_for_client(
             query = query.filter(CompanyTender.statut == statut)
 
     if not include_rejected and score_min is None and (not statut or statut == "Tous"):
-        # Par défaut : tout marché avec un score > 0
-        # (score = 0 = exclusion ou aucun mot-clé → caché par défaut)
         query = query.filter(CompanyTender.score > 0)
 
     results = query.order_by(Sotradies.date_detection.desc()).all()
@@ -132,7 +138,16 @@ def _filtered_for_client(
 
         out.append(item)
 
-    return out
+    total = len(out)
+
+    if offset < 0:
+        offset = 0
+    if limit is not None:
+        out = out[offset : offset + limit]
+    elif offset:
+        out = out[offset:]
+
+    return out, total
 
 
 def _filtered_for_superadmin(
@@ -143,7 +158,9 @@ def _filtered_for_superadmin(
     categorie: str | None,
     score_min: int | None,
     include_rejected: bool,
-) -> list[TenderOut]:
+    limit: int | None = None,
+    offset: int = 0,
+) -> tuple[list[TenderOut], int]:
     query = db.query(Sotradies)
 
     if search:
@@ -161,34 +178,73 @@ def _filtered_for_superadmin(
 
     if score_min is not None:
         out = [t for t in out if t.score >= score_min]
+    elif not include_rejected:
+        out = [t for t in out if t.score > 0 or t.statut == "retenu"]
 
     if categorie and categorie != "Toutes":
         out = [t for t in out if (t.top_categorie or "") == categorie]
 
-    return out
+    total = len(out)
+
+    if offset < 0:
+        offset = 0
+    if limit is not None:
+        out = out[offset : offset + limit]
+    elif offset:
+        out = out[offset:]
+
+    return out, total
 
 
-@router.get("", response_model=list[TenderOut])
+@router.get("", response_model=TenderListPage)
 def list_tenders(
-    statut: str | None = None,
     search: str | None = Query(None),
     commercial: str | None = Query(None),
+    statut: str | None = Query(None),
     categorie: str | None = Query(None),
     score_min: int | None = Query(None),
     include_rejected: bool = Query(False),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
-     user: dict = Depends(get_current_user),
+    user: dict = Depends(get_current_user),
 ):
     if _is_superadmin(user):
-        return _filtered_for_superadmin(
-            db, search, commercial, statut, categorie, score_min, include_rejected
+        items, total = _filtered_for_superadmin(
+            db,
+            search,
+            commercial,
+            statut,
+            categorie,
+            score_min,
+            include_rejected,
+            limit=limit,
+            offset=offset,
+        )
+    else:
+        company_id = _require_company_id(user)
+        items, total = _filtered_for_client(
+            db,
+            company_id,
+            user,
+            search,
+            commercial,
+            statut,
+            categorie,
+            score_min,
+            include_rejected,
+            limit=limit,
+            offset=offset,
         )
 
-    company_id = _require_company_id(user)
-    return _filtered_for_client(
-        db, company_id, search, commercial, statut, categorie, score_min, include_rejected,
-        user=user,
+    return TenderListPage(
+        items=items,
+        total=total,
+        limit=limit,
+        offset=offset,
     )
+
+
 
 @router.get("/export")
 def export_tenders(
@@ -202,15 +258,35 @@ def export_tenders(
     db: Session = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
+    # Export : pas de petite page, plafond anti-OOM
+    export_limit = 5000
+
     if _is_superadmin(user):
-        tenders = _filtered_for_superadmin(
-            db, search, commercial, statut, categorie, score_min, include_rejected
+        tenders, _total = _filtered_for_superadmin(
+            db,
+            search,
+            commercial,
+            statut,
+            categorie,
+            score_min,
+            include_rejected,
+            limit=export_limit,
+            offset=0,
         )
     else:
         company_id = _require_company_id(user)
-        tenders = _filtered_for_client(
-            db, company_id, search, commercial, statut, categorie, score_min, include_rejected,
-            user=user,
+        tenders, _total = _filtered_for_client(
+            db,
+            company_id,
+            user,
+            search,
+            commercial,
+            statut,
+            categorie,
+            score_min,
+            include_rejected,
+            limit=export_limit,
+            offset=0,
         )
 
     date_str = datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%d")
@@ -218,7 +294,9 @@ def export_tenders(
 
     if format == "xlsx":
         content = tenders_to_excel(tenders)
-        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        media_type = (
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
         filename = f"marches-{app_slug}-{date_str}.xlsx"
     else:
         content = tenders_to_pdf(tenders)
@@ -231,36 +309,70 @@ def export_tenders(
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
-
-@router.get("/rejected", response_model=list[TenderOut])
+@router.get("/rejected", response_model=TenderListPage)
 def list_rejected_tenders(
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
     if _is_superadmin(user):
-        results = db.query(Sotradies).order_by(Sotradies.date_detection.desc()).all()
+        results = (
+            db.query(Sotradies)
+            .order_by(Sotradies.date_detection.desc())
+            .all()
+        )
         out = [to_tender_out_from_sotradies(t) for t in results]
         threshold = getattr(settings, "RELEVANCE_RETAIN_THRESHOLD", 50)
-        return [
+        out = [
             t for t in out
             if t.score < threshold and t.statut != "retenu"
         ]
+        total = len(out)
+        items = out[offset : offset + limit]
+        return TenderListPage(
+            items=items, total=total, limit=limit, offset=offset
+        )
 
     company_id = _require_company_id(user)
-    rows = (
+    query = (
         db.query(CompanyTender, Sotradies)
         .join(Sotradies, Sotradies.id == CompanyTender.tender_id)
         .filter(
             CompanyTender.company_id == company_id,
             CompanyTender.decision == "rejete",
         )
-        .order_by(Sotradies.date_detection.desc())
-        .all()
     )
-    return [
-        to_tender_out_from_match(m, t, _commercial_name(db, m.commercial_id))
+
+    if user.get("profil") == "commercial":
+        moi = (
+            db.query(Commercial)
+            .filter(
+                Commercial.company_id == company_id,
+                Commercial.email == user.get("sub"),
+                Commercial.actif.is_(True),
+            )
+            .one_or_none()
+        )
+        if moi is None:
+            return TenderListPage(
+                items=[], total=0, limit=limit, offset=offset
+            )
+        query = query.filter(CompanyTender.commercial_id == moi.id)
+
+    rows = query.order_by(Sotradies.date_detection.desc()).all()
+    full = [
+        to_tender_out_from_match(
+            m, t, _commercial_name(db, m.commercial_id)
+        )
         for m, t in rows
     ]
+    total = len(full)
+    items = full[offset : offset + limit]
+    return TenderListPage(
+        items=items, total=total, limit=limit, offset=offset
+    )
+
 
 
 @router.patch("/{tender_id}/feedback", response_model=TenderOut)
@@ -346,8 +458,11 @@ def update_tender_status(
     tender_id: str,
     payload: TenderStatusUpdate,
     db: Session = Depends(get_db),
-     user: dict = Depends(get_current_user),
+    user: dict = Depends(get_current_user),
 ):
+    now = datetime.now(UTC).replace(tzinfo=None)
+
+    # Superadmin : vue brute Sotradies (comportement inchangé)
     if _is_superadmin(user):
         if payload.statut not in SUPERADMIN_STATUTS:
             raise HTTPException(status_code=400, detail="Statut invalide.")
@@ -356,7 +471,7 @@ def update_tender_status(
             raise HTTPException(status_code=404, detail="Marché introuvable")
         ancien = t.statut
         t.statut = payload.statut
-        t.date_derniere_action = datetime.now(UTC).replace(tzinfo=None)
+        t.date_derniere_action = now
         db.add(AuditLog(
             sotradies_id=t.id,
             utilisateur_email=user.get("sub", "inconnu"),
@@ -367,10 +482,7 @@ def update_tender_status(
         db.refresh(t)
         return to_tender_out_from_sotradies(t)
 
-    # Client : on modifie CompanyTender.statut uniquement
-    if payload.statut not in CLIENT_STATUTS:
-        raise HTTPException(status_code=400, detail="Statut invalide.")
-
+    # Client
     company_id = _require_company_id(user)
     match = (
         db.query(CompanyTender)
@@ -380,23 +492,36 @@ def update_tender_status(
     if not match:
         raise HTTPException(status_code=404, detail="Marché introuvable")
 
-    ancien = match.statut
-    match.statut = payload.statut
+    if payload.statut == "retenu":
+        # Repêchage = décision humaine : change la DÉCISION.
+        # feedback="pertinent" protège l'offre contre les recalculs automatiques.
+        ancien = match.decision
+        match.decision = "retenu"
+        match.feedback = "pertinent"
+        match.feedback_at = now
+        if match.statut in (None, "sans_suite"):
+            match.statut = "nouveau"  # reprend le cycle commercial
+        details = dict(match.score_details or {})
+        details["_repechage"] = {"date": now.isoformat(timespec="seconds"),
+                                 "par": user.get("sub"), "ancienne_decision": ancien}
+        match.score_details = details
+        action, detail = "repechage", f"{ancien} -> retenu"
+    else:
+        if payload.statut not in CLIENT_STATUTS:
+            raise HTTPException(400, detail="Statut invalide.")
+        match.statut = payload.statut
+        action, detail = "changement_statut", f"{ancien} -> {payload.statut}"
 
     tender = db.query(Sotradies).filter_by(id=tender_id).first()
     if tender:
-        tender.date_derniere_action = datetime.now(UTC).replace(tzinfo=None)
+        tender.date_derniere_action = now
 
     db.add(AuditLog(
         sotradies_id=tender_id,
         utilisateur_email=user.get("sub", "inconnu"),
-        action="changement_statut",
-        detail=f"{ancien} -> {payload.statut}",
+        action=action,
+        detail=detail,
     ))
     db.commit()
     db.refresh(match)
-
-    tender = db.query(Sotradies).filter_by(id=tender_id).first()
-    return to_tender_out_from_match(
-        match, tender, _commercial_name(db, match.commercial_id)
-    )
+    return to_tender_out_from_match(match, tender, _commercial_name(db, match.commercial_id))

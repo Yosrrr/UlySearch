@@ -32,6 +32,7 @@ class User(Base):
     actif = Column(Boolean, nullable=False, default=True)
     failed_login_attempts = Column(Integer, nullable=False, default=0)
     locked_until = Column(DateTime, nullable=True)
+    token_version = Column(Integer, nullable=False, default=0, server_default="0")
 
     # RELATION vers Company (via users.company_id)
     company = relationship(

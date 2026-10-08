@@ -114,7 +114,11 @@ def _build_scrapers(company_id: int | None = None) -> list:
             if factory is None:
                 print(f"[pipeline] Connecteur inconnu : {source['nom']}")
                 continue
-            scraper = factory()
+            # ONMP / TUNEPS : transmettre auth si le connecteur l'accepte
+            try:
+                scraper = factory(auth=auth)
+            except TypeError:          # connecteur qui n'accepte pas auth
+                scraper = factory()
 
         elif source_type == "universel":
             url = str(source["url"] or "").strip()
@@ -309,19 +313,25 @@ def _resolve_commercial(category: str | None, assignment_rules: dict, configured
     return None
 
 
-def _resolve_commercial_id(db, company_id: int, category: str | None, assignment_rules: dict, configured_categories: dict) -> int | None:
-    if company_id is None:
-        raise ValueError("company_id est obligatoire.")
+def _resolve_commercial_id(db, company_id, category, assignment_rules, configured_categories):
     nom = _resolve_commercial(category, assignment_rules, configured_categories)
     if not nom:
         return None
-    commercial = (
+
+    target = " ".join(nom.lower().split())
+    commercials = (
         db.query(Commercial)
-        .filter(Commercial.company_id == company_id, Commercial.nom == nom, Commercial.actif.is_(True))
-        .order_by(Commercial.id)
-        .first()
+        .filter(Commercial.company_id == company_id, Commercial.actif.is_(True))
+        .all()
     )
-    return commercial.id if commercial is not None else None
+    for c in commercials:
+        if " ".join((c.nom or "").lower().split()) == target:
+            return c.id
+    # optionnel: match email si la rule contient un email
+    for c in commercials:
+        if (c.email or "").lower() == target:
+            return c.id
+    return None
 
 
 def _tender_to_raw(tender: Sotradies) -> SotradiesRaw:
@@ -480,7 +490,9 @@ def _enrich_with_ai(db, record: Sotradies, effective_source: str, tender_id: str
             dump_path.read_text(encoding="utf-8"),
             merged_categories,
         )
-        if isinstance(extraction, dict) and extraction.get("raison") != "Erreur technique IA (locale)":
+        _ECHECS_IA = {"Erreur technique IA (locale)", "Réponse IA invalide",
+                      "Aucune catégorie configurée en administration"}
+        if isinstance(extraction, dict) and extraction.get("raison") not in _ECHECS_IA:
             ai_result = {**ai_result, **{k: v for k, v in extraction.items() if v not in (None, "", [])}}
         else:
             errors += 1

@@ -4,7 +4,7 @@ activation/désactivation). Réservé exclusivement au profil "superadmin".
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-
+from app.models.company import Company
 from app.core.database import get_db
 from app.core.security import hash_password
 from app.models.user import User
@@ -35,7 +35,9 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db), admin=Depend
         )
 
     # Vérifier que l'entreprise existe
-    if company is None:
+    if payload.company_id is not None:
+        company = db.get(Company, payload.company_id)
+        if company is None:
             raise HTTPException(status_code=404, detail="Entreprise introuvable.")
 
     if db.query(User).filter_by(email=payload.email).first():

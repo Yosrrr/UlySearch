@@ -181,7 +181,7 @@ Ne suppose aucun secteur d'activité pour l'entreprise cliente.
 Si une classification est demandée, utilise exclusivement les catégories
 et leurs définitions fournies.{brands_str}.
 
-Catégories possibles : {", ".join(category_names)}
+Catégories possibles : {", ".join(category_names) or "aucune — fais seulement l'extraction factuelle : pertinent=false, categorie=null, score=0"}
 
 Le texte fourni contient les métadonnées de l'offre (objet, acheteur, dates, source), puis éventuellement le texte brut de la page de détail.
 
@@ -228,11 +228,7 @@ def filter_and_extract(raw_txt_content: str, dynamic_categories: dict) -> dict:
     category_names = list(dynamic_categories.keys())
     fallback_description = _fallback_description_from_text(raw_txt_content)
 
-    if not category_names:
-        return _empty_with_description(
-            raw_txt_content,
-            "Aucune catégorie configurée en administration",
-        )
+    
 
     system_prompt = _build_system_prompt(dynamic_categories)
     data = call_local_llm_json(system_prompt, raw_txt_content[:4000])

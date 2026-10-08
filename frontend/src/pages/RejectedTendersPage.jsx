@@ -1,34 +1,48 @@
 ﻿// src/pages/RejectedTendersPage.jsx
 import { useState, useMemo } from "react";
-import { useQueryClient, useMutation } from "@tanstack/react-query";
-import { Search, Undo2 } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronLeft, ChevronRight, Search, Undo2 } from "lucide-react";
 import PageWrapper from "../components/layout/PageWrapper";
 import Spinner from "../components/ui/Spinner";
 import Alert from "../components/ui/Alert";
-import { useRejectedTenders } from "../hooks/useTenders";
-import { updateTenderStatus } from "../api/tenders";
-
+import { fetchRejectedTenders, updateTenderStatus } from "../api/tenders";
 export default function RejectedTendersPage() {
-  const { data: tenders, isLoading, isError } = useRejectedTenders();
   const [search, setSearch] = useState("");
-  const queryClient = useQueryClient();
+  const limit = 50;
+  const [offset, setOffset] = useState(0);
 
-  const restoreMutation = useMutation({
-    mutationFn: (id) => updateTenderStatus(id, "retenu"),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["rejected-tenders"] });
-      queryClient.invalidateQueries({ queryKey: ["tenders"] });
-    },
+  const queryClient = useQueryClient();
+  const {
+    data,
+    isError,
+    isLoading,
+  } = useQuery({
+    queryKey: ["rejected-tenders", limit, offset],
+    queryFn: () => fetchRejectedTenders({ limit, offset }),
+    placeholderData: (previousData) => previousData,
   });
 
+  const items = useMemo(() => data?.items ?? [], [data]);
+  const total = data?.total ?? 0;
+  const hasMore = offset + items.length < total;
+
+const restoreMutation = useMutation({
+  mutationFn: (id) => updateTenderStatus(id, "retenu"),
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ["rejected-tenders"] });
+    queryClient.invalidateQueries({ queryKey: ["tenders"] });
+  },
+});
+
   const filtered = useMemo(() => {
-    if (!tenders) return [];
-    if (!search) return tenders;
+    if (!search) return items;
     const s = search.toLowerCase();
-    return tenders.filter(
-      (t) => t.objet.toLowerCase().includes(s) || t.acheteur.toLowerCase().includes(s)
+    return items.filter(
+      (t) =>
+        t.objet?.toLowerCase().includes(s) ||
+        t.acheteur?.toLowerCase().includes(s)
     );
-  }, [tenders, search]);
+  }, [items, search]);
 
   return (
     <PageWrapper
@@ -79,6 +93,30 @@ export default function RejectedTendersPage() {
           </div>
         ))}
       </div>
+
+      {total > 0 && (
+        <div className="mt-5 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setOffset((current) => Math.max(0, current - limit))}
+            disabled={offset === 0 || isLoading}
+            className="flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-ink-800 hover:bg-slate-50 disabled:opacity-50"
+          >
+            <ChevronLeft size={14} /> Précédent
+          </button>
+          <span className="text-xs text-slate-500">
+            {offset + 1}-{Math.min(offset + items.length, total)} sur {total}
+          </span>
+          <button
+            type="button"
+            onClick={() => setOffset((current) => current + limit)}
+            disabled={!hasMore || isLoading}
+            className="flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-ink-800 hover:bg-slate-50 disabled:opacity-50"
+          >
+            Suivant <ChevronRight size={14} />
+          </button>
+        </div>
+      )}
     </PageWrapper>
   );
 }

@@ -3,6 +3,7 @@ Extraction de détails supplémentaires depuis la PAGE DE DÉTAIL de chaque
 source — HTML uniquement, pas de PDF/OCR.
 """
 from pathlib import Path
+from app.core.paths import DEBUG_DETAIL_DIR
 
 import requests
 from bs4 import BeautifulSoup

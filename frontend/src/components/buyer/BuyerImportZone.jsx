@@ -1,4 +1,3 @@
-BuyerImportZone.jsx// src/components/buyer/BuyerImportZone.jsx
 import { useState } from "react";
 import { UploadCloud } from "lucide-react";
 import { importBuyersFile } from "../../api/buyers";

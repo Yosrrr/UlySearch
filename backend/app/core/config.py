@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     ENV: str = "development"
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
     ALLOW_PROCESS_CONTROL: bool = False
+    
+    LLM_ENABLED: bool = False
+    RUN_PIPELINE_ON_REGISTER: bool = False
+
 
     DATABASE_URL: str = "postgresql+psycopg://sotradies_user:sotradies_pass@localhost:5432/sotradies_watch"
     REDIS_URL: str = "redis://localhost:6379/0"

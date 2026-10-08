@@ -40,6 +40,17 @@ def get_current_user(
     if not user or not user.actif:
         raise HTTPException(status_code=401, detail="Session invalide")
 
+    # F-015 : jeton émis avant la dernière déconnexion -> refusé
+    tv_user = getattr(user, "token_version", 0)
+    if not isinstance(tv_user, int):
+        tv_user = 0
+    try:
+        tv_token = int(payload.get("tv", 0))
+    except (TypeError, ValueError):
+        tv_token = -1
+    if tv_token != tv_user:
+        raise HTTPException(status_code=401, detail="Session expirée, reconnectez-vous")
+
     payload["profil"] = user.profil
     payload["nom"] = user.nom
     payload["company_id"] = getattr(user, "company_id", None)

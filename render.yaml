@@ -6,12 +6,21 @@ databases:
     user: UlySearch
 
 services:
+  # ─── Redis broker Celery (pas d'éviction) ────────────────────────
   - type: keyvalue
     name: UlySearch-redis
     plan: starter
     region: frankfurt
     ipAllowList: []
     maxmemoryPolicy: noeviction
+
+  # ─── Redis cache applicatif (F-031 : éviction autorisée) ─────────
+  - type: keyvalue
+    name: UlySearch-cache
+    plan: starter
+    region: frankfurt
+    ipAllowList: []
+    maxmemoryPolicy: allkeys-lru
 
   # ─── Service web (API + frontend) ────────────────────────────────
   - type: web
@@ -22,7 +31,6 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /health
-    
     preDeployCommand: cd backend && alembic upgrade head && python -m scripts.bootstrap
     envVars:
       - key: ENV
@@ -34,28 +42,40 @@ services:
           name: UlySearch-db
           property: connectionString
 
-      # Redis (broker + cache partagés)
+      # Redis : broker Celery
       - key: REDIS_URL
         fromService:
           type: keyvalue
           name: UlySearch-redis
           property: connectionString
+
+      # Redis : cache applicatif (F-031)
       - key: CACHE_REDIS_URL
         fromService:
           type: keyvalue
-          name: UlySearch-redis
+          name: UlySearch-cache
           property: connectionString
 
       # Sécurité
       - key: JWT_SECRET_KEY
         generateValue: true
-      
       - key: SOURCE_CREDENTIALS_KEY
         generateValue: true
 
-      
       - key: CORS_ORIGINS
         value: https://ulysearch.onrender.com
+
+      # IA désactivée en cloud (F-009)
+      - key: LLM_ENABLED
+        value: "false"
+
+      # Pas de scan immédiat à l'inscription (F-012)
+      - key: RUN_PIPELINE_ON_REGISTER
+        value: "false"
+
+      # TUNEPS : pas de vérification TLS côté cloud, aucun identifiant envoyé (F-021)
+      - key: TUNEPS_SSL_VERIFY
+        value: "false"
 
       # Admin initial
       - key: INITIAL_ADMIN_EMAIL
@@ -68,12 +88,14 @@ services:
       # Alertes
       - key: ADMIN_ALERT_EMAIL
         sync: false
+      - key: DIRECTION_EMAIL
+        sync: false
 
-      
+      # SMTP
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT
-        value: 587
+        value: "587"
       - key: SMTP_USER
         sync: false
       - key: SMTP_PASSWORD
@@ -85,13 +107,13 @@ services:
       - key: COMMERCIALS_SEED
         sync: false
 
-      # Ollama (F-009 : déclarez l'endpoint si vous en avez un)
+      # Ollama (si un jour un endpoint externe)
       # - key: OLLAMA_HOST
       #   value: https://votre-endpoint-ollama.example.com
       # - key: OLLAMA_MODEL
       #   value: qwen2.5:3b-instruct
 
-  # ─── Worker Celery ────────────────────────────────────────────────
+  # ─── Worker Celery ───────────────────────────────────────────────
   - type: worker
     name: UlySearch-worker
     runtime: docker
@@ -103,21 +125,24 @@ services:
     envVars:
       - key: ENV
         value: production
+
       - key: DATABASE_URL
         fromDatabase:
           name: UlySearch-db
           property: connectionString
+
       - key: REDIS_URL
         fromService:
           type: keyvalue
           name: UlySearch-redis
           property: connectionString
+
       - key: CACHE_REDIS_URL
         fromService:
           type: keyvalue
-          name: UlySearch-redis
+          name: UlySearch-cache
           property: connectionString
-      
+
       - key: SOURCE_CREDENTIALS_KEY
         fromService:
           type: web
@@ -128,6 +153,12 @@ services:
           type: web
           name: UlySearch
           envVarKey: JWT_SECRET_KEY
+
+      - key: LLM_ENABLED
+        value: "false"
+      - key: TUNEPS_SSL_VERIFY
+        value: "false"
+
       - key: SMTP_HOST
         fromService:
           type: web
@@ -158,13 +189,18 @@ services:
           type: web
           name: UlySearch
           envVarKey: ADMIN_ALERT_EMAIL
+      - key: DIRECTION_EMAIL
+        fromService:
+          type: web
+          name: UlySearch
+          envVarKey: DIRECTION_EMAIL
       - key: CORS_ORIGINS
         fromService:
           type: web
           name: UlySearch
           envVarKey: CORS_ORIGINS
 
-  # ─── Scheduler Celery Beat ────────────────────────────────────────
+  # ─── Scheduler Celery Beat ───────────────────────────────────────
   - type: worker
     name: UlySearch-scheduler
     runtime: docker
@@ -176,20 +212,24 @@ services:
     envVars:
       - key: ENV
         value: production
+
       - key: DATABASE_URL
         fromDatabase:
           name: UlySearch-db
           property: connectionString
+
       - key: REDIS_URL
         fromService:
           type: keyvalue
           name: UlySearch-redis
           property: connectionString
+
       - key: CACHE_REDIS_URL
         fromService:
           type: keyvalue
-          name: UlySearch-redis
+          name: UlySearch-cache
           property: connectionString
+
       - key: SOURCE_CREDENTIALS_KEY
         fromService:
           type: web
@@ -200,8 +240,44 @@ services:
           type: web
           name: UlySearch
           envVarKey: JWT_SECRET_KEY
+
+      - key: LLM_ENABLED
+        value: "false"
+      - key: TUNEPS_SSL_VERIFY
+        value: "false"
+
+      - key: SMTP_HOST
+        fromService:
+          type: web
+          name: UlySearch
+          envVarKey: SMTP_HOST
+      - key: SMTP_PORT
+        fromService:
+          type: web
+          name: UlySearch
+          envVarKey: SMTP_PORT
+      - key: SMTP_USER
+        fromService:
+          type: web
+          name: UlySearch
+          envVarKey: SMTP_USER
+      - key: SMTP_PASSWORD
+        fromService:
+          type: web
+          name: UlySearch
+          envVarKey: SMTP_PASSWORD
+      - key: SENDER_EMAIL
+        fromService:
+          type: web
+          name: UlySearch
+          envVarKey: SENDER_EMAIL
       - key: ADMIN_ALERT_EMAIL
         fromService:
           type: web
           name: UlySearch
           envVarKey: ADMIN_ALERT_EMAIL
+      - key: DIRECTION_EMAIL
+        fromService:
+          type: web
+          name: UlySearch
+          envVarKey: DIRECTION_EMAIL

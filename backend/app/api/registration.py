@@ -2,7 +2,7 @@
 
 import re
 from typing import Annotated, Literal
-
+from app.core.config import settings
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 from sqlalchemy import func
@@ -432,31 +432,23 @@ def register_client(
         selected_sources = {}
 
         for source_id in dict.fromkeys(payload.source_ids):
-            source = get_public_source(db, source_id)
-            subscribe_source(db, company.id, source)
+            source = get_public_source(db, source_id)  # seulement sources publiques actives
+            subscribe_source(db, company.id, source)   # CompanySource.actif=True
             selected_sources[source.id] = source
 
+        # Sites du client (IA + saisie manuelle) → actifs POUR LUI
         for site in manual_specs:
             source = propose_source(
                 db,
                 company_id=company.id,
                 nom=site["nom"],
                 url=site["url"],
-                activate=True,   # sources validées par le client → actives immédiatement
+                # True = le client active son site dès l'inscription
+                activate=True,
             )
-            if site["prive"]:
-                link = db.query(CompanySource).filter_by(
-                    company_id=company.id,
-                    source_id=source.id,
-                ).one()
-                db.add(SourceAccount(
-                    company_source_id=link.id,
-                    login=site["login"],
-                    password_encrypted=encrypt_source_password(
-                        site["mot_de_passe"]
-                    ),
-                ))
+            # credentials privés si besoin...
             selected_sources[source.id] = source
+            
 
         if len(selected_sources) > 10:
             raise HTTPException(422, "Maximum 10 sources par inscription.")
@@ -470,8 +462,8 @@ def register_client(
             code = source.nom.strip().lower()
             if source.type == "dedie" and code in active_sources:
                 active_sources[code]["actif"] = True
-
-        # 5. Sa configuration : aucune fusion globale.
+                
+        # 5. Configuration propre à cette entreprise uniquement.
         db.add(Configuration(
             company_id=company.id,
             score_decision_threshold=50,
@@ -485,14 +477,16 @@ def register_client(
         ))
 
         pending = sum(
-            not bool(source.actif)
-            for source in selected_sources.values()
+            1 for source in selected_sources.values()
+            if not bool(source.actif)
         )
 
         result = RegisterResponse(
             message=(
                 "Compte créé. Les nouvelles sources restent "
                 "inactives jusqu'à leur validation."
+                if pending
+                else "Compte créé avec succès."
             ),
             email=email,
             company_id=company.id,
@@ -503,31 +497,38 @@ def register_client(
         )
 
         db.commit()
-        try:
-            from app.workers.tasks import run_pipeline_for_new_client
-            run_pipeline_for_new_client.apply_async(
-                args=[company.id],
-                countdown=30,   # 30 secondes pour laisser le commit se propager
-            )
-            print(f"[register] Pipeline immédiat planifié pour company_id={company.id}")
-        except Exception as exc:
-            # Celery peut ne pas être disponible en développement
-            print(f"[register] Pipeline immédiat non lancé (Celery indisponible): {exc}")
-
-        response.headers["Cache-Control"] = "no-store"
-        return result
-    
 
     except HTTPException:
         db.rollback()
         raise
-    except IntegrityError as exc:
+    except Exception as exc:
         db.rollback()
+        print(f"[register] Erreur inscription : {type(exc).__name__}: {exc}")
         raise HTTPException(
-            409,
-            "Conflit pendant l'inscription. Vérifiez les informations "
-            "ou contactez l'administrateur.",
+            status_code=500,
+            detail="Erreur lors de la création du compte.",
         ) from exc
-    except Exception:
-        db.rollback()
-        raise
+
+    # ── Après commit réussi uniquement ─────────────────────────────
+    if getattr(settings, "RUN_PIPELINE_ON_REGISTER", False):
+        try:
+            from app.workers.tasks import run_pipeline_for_new_client
+            run_pipeline_for_new_client.apply_async(
+                args=[result.company_id],
+                countdown=30,
+            )
+            print(
+                f"[register] Pipeline planifié company_id={result.company_id}"
+            )
+        except Exception as exc:
+            print(f"[register] Pipeline non lancé: {exc}")
+    else:
+        print(
+            f"[register] Pipeline différé "
+            f"(RUN_PIPELINE_ON_REGISTER=false) "
+            f"company_id={result.company_id}"
+        )
+
+    response.headers["Cache-Control"] = "no-store"
+    return result
+        

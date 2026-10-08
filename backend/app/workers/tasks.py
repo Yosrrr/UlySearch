@@ -1,7 +1,8 @@
 """Tâches Celery principales."""
 
 import random
-
+import redis as _redis
+from app.core.config import settings
 # Import explicite : permet d'enregistrer tasks.run_cleanup dans Celery.
 # Celery autodiscover charge app.workers.tasks, pas automatiquement
 # cleanup_tasks.py.
@@ -15,7 +16,16 @@ from app.services.notifier import (
     send_reminders,
 )
 from app.services.pipeline import run_pipeline
+_lock_client = _redis.Redis.from_url(settings.REDIS_URL)
 
+
+def _acquire_lock(name: str, timeout: int = 1800) -> bool:
+    """Retourne True si le verrou est acquis (pas d'autre run en cours)."""
+    return bool(_lock_client.set(f"lock:{name}", "1", nx=True, ex=timeout))
+
+
+def _release_lock(name: str) -> None:
+    _lock_client.delete(f"lock:{name}")
 
 @celery_app.task(name="tasks.kickoff_daily_scan")
 def kickoff_daily_scan():
@@ -24,13 +34,18 @@ def kickoff_daily_scan():
     run_daily_scan.apply_async(countdown=delay_seconds)
 
 
-@celery_app.task(name="tasks.run_daily_scan")
+@celery_app.task(name="tasks.run_daily_scan", soft_time_limit=1500, time_limit=1800)
 def run_daily_scan():
     """Scraping + scoring, puis alertes instantanées."""
-    summary = run_pipeline()
-    dispatch_new_tenders()
-    return summary
-
+    if not _acquire_lock("daily_scan"):
+        print("[tasks] Scan déjà en cours, skip")
+        return {"skipped": True}
+    try:
+        summary = run_pipeline()
+        dispatch_new_tenders()
+        return summary
+    finally:
+        _release_lock("daily_scan")
 
 @celery_app.task(name="tasks.send_digest")
 def send_digest():

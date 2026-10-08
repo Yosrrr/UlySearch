@@ -1,37 +1,33 @@
-﻿fastapi==0.115.0
-uvicorn[standard]==0.30.6
 
+
+fastapi==0.142.2
+# starlette vient avec fastapi (~1.7)
+uvicorn[standard]==0.30.6
+# ou uvicorn plus rï¿½cent si tu veux aligner plus tard
+
+
+jinja2==3.1.6
+python-multipart==0.0.31
+requests==2.33.0
+python-dotenv==1.2.2
+pillow==12.3.0
+pytest==9.0.3
 pydantic==2.9.2
 pydantic-settings==2.5.2
 email-validator==2.2.0
-python-dotenv==1.0.1
-
 sqlalchemy==2.0.35
 psycopg[binary]==3.2.2
 alembic==1.13.2
-
+reportlab==5.0.0
 celery==5.4.0
 redis==5.0.8
-
-pytest==8.3.3
 httpx==0.27.2
-reportlab==4.2.5
 slowapi==0.1.9
-
-Pillow==10.4.0
-
-
 scrapling[fetchers]==0.4.15
-scrapling[playwright]==0.4.15
-playwright==1.49.1
-
-python-multipart==0.0.20
-
-requests==2.32.3
+playwright==1.62.0
 beautifulsoup4==4.12.3
 lxml==6.1.1
 tenacity==9.0.0
-
 python-dateutil==2.9.0.post0
 dateparser==1.2.0
 Unidecode==1.3.8
@@ -41,13 +37,12 @@ PyMuPDF==1.24.10
 pytesseract==0.3.13
 pdf2image==1.17.0
 
-Jinja2==3.1.4
 pandas==2.2.2
 openpyxl==3.1.5
 
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
-python-jose[cryptography]==3.3.0
 cryptography>=42.0.0
 psutil==6.0.0
-ollama==0.4.8
+ollama==0.6.2
+PyJWT==2.15.1

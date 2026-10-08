@@ -1,40 +1,32 @@
 """
 Scraper TUNEPS — API publique des avis d'appel d'offres.
 
-Appelle directement l'endpoint JSON utilisé par le portail Angular :
-    POST /api2/portail/bid/master/data
+POST /api2/portail/bid/master/data  ->  {"code": "200", "payload": {"data": [...], "total": N}}
 
-Avantages vs navigateur :
-- pas de Playwright en production pour cette source ;
-- rapide (~1 s par page de 100 avis) ;
-- le nom de l'acheteur (bidInstNm) est PUBLIC → matching Layer 5 possible
-  
-
-Structure de réponse :
-    {"code": "200", "payload": {"data": [...], "total": N}}
+Sécurité (F-021) :
+- Par défaut : TLS non vérifié (tuneps.tn n'envoie pas son certificat
+  intermédiaire) ET aucun identifiant envoyé. Lecture des annonces publiques.
+- Sur le PC d'un client (essai clé USB) : TUNEPS_SSL_VERIFY=true
+  (+ éventuellement TUNEPS_CA_BUNDLE=chemin\\vers\\chaine.pem).
+  Les identifiants ne sont envoyés QUE si TLS est vérifié.
 """
 import base64
 import os
 from datetime import datetime, timedelta
-from pathlib import Path
+
 import certifi
 
 # Windows : curl-cffi ne trouve pas toujours le magasin de certificats système.
-# On pointe explicitement vers le bundle certifi (déjà dépendance du projet).
 os.environ.setdefault("CURL_CA_BUNDLE", certifi.where())
 os.environ.setdefault("SSL_CERT_FILE", certifi.where())
 
-from scrapling.fetchers import Fetcher     
+from scrapling.fetchers import Fetcher
 
-from app.schemas.sotradies import SotradiesRaw     
-
+from app.schemas.sotradies import SotradiesRaw
 
 API_URL = "https://www.tuneps.tn/api2/portail/bid/master/data"
 
-
-    
 # ⚠️ À CONFIRMER : cliquer sur un avis dans le portail et vérifier l'URL réelle.
-# Fallback sûr : la page de listing publique.
 DETAIL_URL = "https://www.tuneps.tn/portail/detail-offre?id={bid_id}"
 FALLBACK_URL = "https://www.tuneps.tn/portail/offres"
 
@@ -48,7 +40,20 @@ HEADERS = {
 PAGE_SIZE = 100
 MAX_PAGES = 5          # garde-fou : 500 avis max par exécution
 LOOKBACK_DAYS = 3      # arrêt dès que les avis dépassent cette ancienneté
-REQUEST_TIMEOUT = 30   # secondes (curl-cffi compte en secondes)
+REQUEST_TIMEOUT = 30   # secondes
+
+
+def _tls_verify():
+    """
+    False : TLS non vérifié (défaut, lecture publique).
+    True  : vérification avec le magasin certifi.
+    str   : chemin d'un fichier PEM (TUNEPS_CA_BUNDLE) contenant la chaîne complète.
+    Lu à CHAQUE requête : le réglage peut changer sans redémarrer.
+    """
+    if os.getenv("TUNEPS_SSL_VERIFY", "false").strip().lower() not in ("1", "true", "yes"):
+        return False
+    bundle = os.getenv("TUNEPS_CA_BUNDLE", "").strip()
+    return bundle if bundle else True
 
 
 def _parse_dt(raw: str | None) -> datetime | None:
@@ -65,11 +70,7 @@ def _parse_dt(raw: str | None) -> datetime | None:
 
 
 def _pick_objet(item: dict) -> str:
-    """Préfère le libellé français, sinon anglais, sinon arabe.
-
-    Normalise les retours à la ligne internes fréquents dans les
-    intitulés TUNEPS.
-    """
+    """Libellé français, sinon anglais, sinon arabe (espaces normalisés)."""
     for key in ("bidNmFr", "bidNmEn", "bidNmAr"):
         value = (item.get(key) or "").strip()
         if value:
@@ -83,55 +84,35 @@ class TunepsScraper:
     def __init__(self, auth=None):
         self.auth = auth
 
-    def _fetch_page(self, offset: int) -> tuple[list[dict], int]:
-        """Retourne (items, total). Lève une exception en cas d'échec HTTP."""
-        payload = {
-            "listSort": [],
-            "dataSearch": [
-                {"key": "publicYn", "value": "Y", "specificSearch": "="},
-            ],
-            "listCol": [],
-            "pagination": {"offSet": offset, "limit": PAGE_SIZE},
-            "sort": {"nameCol": "publicDt", "direction": "desc nulls last"},
-        }
-
+    def _build_headers(self, verify) -> dict:
         headers = dict(HEADERS)
-        headers.update({
-            "Content-Type": "application/json",
-            "Referer": "https://www.tuneps.tn/portail/offres",
-            "Accept": "application/json",
-        })
-        if self.auth:
+        if self.auth and verify:
             token = base64.b64encode(
                 f"{self.auth[0]}:{self.auth[1]}".encode("utf-8")
             ).decode("ascii")
             headers["Authorization"] = f"Basic {token}"
+        elif self.auth:
+            print("[tuneps] Identifiants ignorés : TLS non vérifié. "
+                  "Activez TUNEPS_SSL_VERIFY=true sur le PC du client.")
+        return headers
 
-        response = Fetcher.post(
+    def _fetch_page(self, offset: int) -> tuple[list[dict], int]:
+        """Retourne (items, total). Lève une exception en cas d'échec HTTP."""
+        payload = {
+            "listSort": [],
+            "dataSearch": [{"key": "publicYn", "value": "Y", "specificSearch": "="}],
+            "listCol": [],
+            "pagination": {"offSet": offset, "limit": PAGE_SIZE},
+            "sort": {"nameCol": "publicDt", "direction": "desc nulls last"},
+        }
+        verify = _tls_verify()
+        response = Fetcher.post(          # UNE seule requête par page
             API_URL,
             json=payload,
-            headers=headers,          # ← la variable, pas un dict littéral
+            headers=self._build_headers(verify),
             timeout=REQUEST_TIMEOUT,
-            verify=False,
+            verify=verify,
         )
-
-        response = Fetcher.post(
-            API_URL,
-            json=payload,                      # ← le corps JSON de pagination
-            headers={
-                "Content-Type": "application/json",
-                "Referer": "https://www.tuneps.tn/portail/offres",
-                "Accept": "application/json",
-            },
-            timeout=REQUEST_TIMEOUT,
-            verify=False,  # ⚠️ TLS désactivé car tuneps.tn ne fournit pas le certificat intermédiaire
-        )
-        # NOTE SÉCURITÉ (F-021) : TLS désactivé car tuneps.tn ne fournit pas
-        # le certificat intermédiaire. Risque accepté car :
-        # - Les données sont publiques (portail des marchés publics)
-        # - Aucun credential n'est transmis (API publique, pas de login)
-        # - À réactiver si tuneps.tn corrige sa chaîne de certificats
-
         if response.status != 200:
             raise RuntimeError(f"HTTP {response.status} sur {API_URL}")
 
@@ -140,33 +121,22 @@ class TunepsScraper:
         return inner.get("data") or [], int(inner.get("total") or 0)
 
     def parse_items(self, items: list[dict]) -> list[SotradiesRaw]:
-        """Convertit les avis JSON TUNEPS en SotradiesRaw.
-
-        Méthode séparée du réseau pour être testable avec une fixture
-        locale (scripts/test_tuneps_parser.py).
-        """
+        """Convertit les avis JSON TUNEPS en SotradiesRaw (testable sans réseau)."""
         tenders: list[SotradiesRaw] = []
-
         for item in items:
             try:
                 objet = _pick_objet(item)
                 if not objet:
                     continue
-
                 bid_id = item.get("epBidMasterId")
-                lien = (
-                    DETAIL_URL.format(bid_id=bid_id)
-                    if bid_id
-                    else FALLBACK_URL
-                )
-
+                lien = DETAIL_URL.format(bid_id=bid_id) if bid_id else FALLBACK_URL
                 tenders.append(
                     SotradiesRaw(
                         source=self.source_name,
                         reference=str(item.get("bidNo") or ""),
                         objet=objet,
                         acheteur=(item.get("bidInstNm") or "Non communiqué").strip(),
-                        categorie=None,  # déterminée ensuite par l'IA (Layer 4)
+                        categorie=None,
                         date_publication=_parse_dt(item.get("publicDt")),
                         date_limite=_parse_dt(item.get("bdRecvEndDt")),
                         budget_estime=None,
@@ -174,20 +144,11 @@ class TunepsScraper:
                     )
                 )
             except Exception as exc:
-                # Un avis malformé ne doit jamais bloquer les autres.
                 print(f"[tuneps] Avis ignoré (parsing) : {exc}")
-                continue
-
         return tenders
 
     def fetch_tenders(self) -> list[SotradiesRaw]:
-        """Récupère les avis récents (tri publicDt desc), avec pagination.
-
-        S'arrête dès que la page contient des avis plus vieux que
-        LOOKBACK_DAYS — le pipeline filtre ensuite sur la date exacte
-        (filter_today_only), donc ce lookback couvre aussi les rattrapages
-        après un week-end ou une panne.
-        """
+        """Avis récents (publicDt desc), pagination jusqu'à LOOKBACK_DAYS."""
         cutoff = datetime.now() - timedelta(days=LOOKBACK_DAYS)
         all_tenders: list[SotradiesRaw] = []
 
@@ -198,22 +159,13 @@ class TunepsScraper:
             except Exception as exc:
                 print(f"[tuneps] ❌ Erreur page offset={offset} : {exc}")
                 break
-
             if not items:
                 break
 
             tenders = self.parse_items(items)
             all_tenders.extend(tenders)
-
-            oldest = min(
-                (t.date_publication for t in tenders if t.date_publication),
-                default=None,
-            )
-            print(
-                f"[tuneps] page offset={offset} : {len(tenders)} avis "
-                f"(plus ancien : {oldest})"
-            )
-
+            oldest = min((t.date_publication for t in tenders if t.date_publication), default=None)
+            print(f"[tuneps] page offset={offset} : {len(tenders)} avis (plus ancien : {oldest}) total_api={total}")
             if oldest and oldest < cutoff:
                 break
 
@@ -222,9 +174,6 @@ class TunepsScraper:
 
 
 if __name__ == "__main__":
-    scraper = TunepsScraper()
-    results = scraper.fetch_tenders()
-    print()
-    for t in results[:5]:
+    for t in TunepsScraper().fetch_tenders()[:5]:
         pub = t.date_publication.date() if t.date_publication else "?"
         print(f"- [{t.reference}] {pub} | {t.objet[:55]} | {t.acheteur}")

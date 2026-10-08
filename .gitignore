@@ -54,11 +54,9 @@ backend/onboarding_response.json
 backend/requirements_old.txt
 backend/gen_migration.py
 
-*.md
-*.txt
-.env
-.env.*
-*.env
+
 backend/.env
 frontend/.env
 celerybeat-schedule*
+
+*.bak

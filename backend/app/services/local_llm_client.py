@@ -83,6 +83,9 @@ def call_local_llm_json(
     think          : n'est ajouté à la requête QUE si True
                      (évite TypeError sur SDK 0.6.x avec qwen/deepseek).
     """
+    if not getattr(settings, "LLM_ENABLED", False):
+        logger.info("[llm] disabled (LLM_ENABLED=false)")
+        return None
     if _client is None:
         logger.error("[local_llm_client] Bibliothèque Python ollama absente.")
         return None

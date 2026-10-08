@@ -27,7 +27,9 @@ DEMO_TENDERS = [
 def seed_demo_tenders(db) -> None:
     if os.getenv("SEED_DEMO_DATA", "false").lower() not in ("1", "true", "yes"):
         return
-    # ... (inchangé)
+    # Intentionnellement vide en prod — pas de données démo automatiques.
+    print("[bootstrap] SEED_DEMO_DATA actif mais seed_demo_tenders non implémenté — skip.")
+    return
 
 def _seed_dedicated_sources(db) -> None:
     """Crée les sources dédiées ONMP/TUNEPS si absentes (idempotent, par nom).
