@@ -15,13 +15,19 @@ L'IA ne peut jamais inventer une URL, une date ou un titre.
 Interface identique à OnmpScraper / TunepsScraper :
     UniversalScraper(source_name, url, use_browser, max_pages).fetch_tenders()
 """
+import ast
+import re as _re
 import asyncio
+import inspect
 import os
+import ipaddress
 import socket
 from datetime import datetime
+from pathlib import Path
 import logging
 import re
 import time
+from datetime import datetime
 from typing import Optional
 from urllib.parse import urldefrag, urljoin, urlparse
 
@@ -32,8 +38,6 @@ from unidecode import unidecode
 
 from app.schemas.sotradies import SotradiesRaw
 from app.services.local_llm_client import call_local_llm_json
-
-import ipaddress
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +61,7 @@ _DETAIL_SYSTEM = (
     "Tu réponds UNIQUEMENT en JSON valide, sans commentaire. "
     "Si un champ est absent de la page, mets null."
 )
-_ENRICH_DETAIL = os.getenv("UNIVERSAL_ENRICH_DETAIL", "false").lower() in ("1", "true", "yes")
+
 _DETAIL_PROMPT = """Voici le texte brut d'une page de détail d'un appel d'offres.
 Extrais les informations suivantes et retourne-les en JSON.
 
@@ -119,12 +123,7 @@ def _enrich_raw_with_detail(
     """
     detail_text = _fetch_detail_page(raw.lien, use_browser=use_browser, auth=auth)
     if not detail_text or len(detail_text) < 100:
-        if _ENRICH_DETAIL:
-            try:
-                raw = _enrich_raw_with_detail(...)
-                time.sleep(1)
-            except Exception as exc:
-                logger.warning(f"[{source_name}] Page de détail trop courte ou vide : {raw.lien}")
+        logger.warning(f"[{source_name}] Page de détail trop courte ou vide : {raw.lien}")
         return raw
 
     detail_reference = _extract_reference(detail_text)
@@ -872,6 +871,20 @@ class UniversalScraper:
                 seen_keys.add(key)
 
                 # Enrichissement depuis la page de détail
+                try:
+                    raw = _enrich_raw_with_detail(
+                        raw,
+                        source_name=self.source_name,
+                        use_browser=self.use_browser,
+                        auth=self.auth,
+                    )
+                    time.sleep(1)  # pause courte entre les requêtes
+                except Exception as exc:
+                    logger.warning(
+                        f"[{self.source_name}] Enrichissement détail échoué "
+                        f"({raw.lien}): {exc}"
+                    )
+
                 all_tenders.append(raw)
                 accepted += 1
 
@@ -891,3 +904,95 @@ class UniversalScraper:
 
         print(f"[universal] {self.source_name} — TOTAL : {len(all_tenders)} offre(s) sur {page_num} page(s)")
         return all_tenders
+def main() -> None:
+    backend = Path(__file__).resolve().parents[1]
+    target = (
+        backend
+        / "app"
+        / "services"
+        / "scrapers"
+        / "universal_scraper.py"
+        
+    )
+    target.write_bytes(updated.encode(encoding))
+
+    if not target.is_file():
+        raise SystemExit(f"Fichier introuvable : {target}")
+
+    original = target.read_bytes()
+    encoding = (
+        "utf-8-sig"
+        if original.startswith(b"\xef\xbb\xbf")
+        else "utf-8"
+    )
+    source = original.decode(encoding)
+    tree = ast.parse(source, filename=str(target))
+
+    definitions = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_same_domain"
+    ]
+
+    all_definitions = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "_same_domain"
+    ]
+
+    if not definitions:
+        raise SystemExit(
+            "Aucune definition de _same_domain trouvee. "
+            "Aucun fichier modifie."
+        )
+
+    if (
+        len(definitions) != len(all_definitions)
+        or any(node.decorator_list for node in definitions)
+    ):
+        raise SystemExit(
+            "Structure inhabituelle : fonction imbriquee ou decoree. "
+            "Aucun fichier modifie. Envoyez le code pour verification."
+        )
+
+    newline = "\r\n" if b"\r\n" in original else "\n"
+    replacement = inspect.getsource(_same_domain).rstrip() + "\n"
+    replacement = replacement.replace("\n", newline)
+
+    lines = source.splitlines(keepends=True)
+
+    # Parcours inverse pour conserver les positions des lignes.
+    for index in range(len(definitions) - 1, -1, -1):
+        node = definitions[index]
+        lines[node.lineno - 1:node.end_lineno] = (
+            [replacement] if index == 0 else []
+        )
+
+    updated = "".join(lines)
+
+    # Controle de syntaxe sans executer le module applicatif.
+    compile(updated, str(target), "exec")
+
+    if updated == source:
+        print("Le correctif est deja present.")
+        print("Fichier :", target)
+        return
+
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    backup = target.with_name(f"{target.name}.{stamp}.bak")
+
+    with backup.open("xb") as handle:
+        handle.write(original)
+
+    target.write_bytes(updated.encode(encoding))
+
+    print("Fichier modifie :", target)
+    print("Sauvegarde      :", backup)
+    print("Definitions remplacees :", len(definitions))
+    print("Une seule definition de _same_domain est conservee.")
+
+
+if __name__ == "__main__":
+    main()

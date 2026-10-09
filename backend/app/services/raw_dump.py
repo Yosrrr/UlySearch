@@ -4,8 +4,7 @@ de la page de détail) dans un fichier .txt — un fichier par offre, avant
 tout appel au modèle local (demande direction du 17/08/2026).
 """
 from pathlib import Path
-
-RAW_DUMP_DIR = Path("data/raw_scrapes")
+from app.core.paths import RAW_DUMP_DIR
 RAW_DUMP_DIR.mkdir(parents=True, exist_ok=True)
 
 

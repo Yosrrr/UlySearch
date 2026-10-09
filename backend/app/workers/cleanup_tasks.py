@@ -19,7 +19,7 @@ Politique appliquée :
 
 from datetime import datetime, timedelta, UTC
 from pathlib import Path
-from app.core.paths import DEBUG_DETAIL_DIR
+from app.core.paths import RAW_DUMP_DIR
 
 from app.core.database import session_scope
 from app.models.audit_log import AuditLog
@@ -84,7 +84,7 @@ def purge_pipeline_logs(
 
 def purge_raw_dumps(keep_days: int = 30) -> None:
     """Purge les fichiers .txt de data/raw_scrapes/ plus vieux que keep_days."""
-    raw_dir = Path("data/raw_scrapes")
+    raw_dir = RAW_DUMP_DIR
 
     if not raw_dir.exists():
         print("[cleanup] raw_dumps : dossier absent, rien à purger.")

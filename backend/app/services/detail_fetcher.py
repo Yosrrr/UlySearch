@@ -17,7 +17,7 @@ import httpx
 from bs4 import BeautifulSoup
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
-
+from app.core.paths import DEBUG_DETAIL_DIR as DEBUG_DIR
 logger = logging.getLogger(__name__)
 
 PAYWALL_MARKERS = [

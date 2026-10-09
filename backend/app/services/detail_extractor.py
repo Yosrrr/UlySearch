@@ -3,7 +3,7 @@ Extraction de détails supplémentaires depuis la PAGE DE DÉTAIL de chaque
 source — HTML uniquement, pas de PDF/OCR.
 """
 from pathlib import Path
-from app.core.paths import DEBUG_DETAIL_DIR
+from app.core.paths import DEBUG_DETAIL_DIR as DEBUG_DIR
 
 import requests
 from bs4 import BeautifulSoup
@@ -12,8 +12,6 @@ from playwright.sync_api import sync_playwright
 from app.core.config import settings
 from app.services.ai_detail_extractor import clean_and_structure, _EMPTY_RESULT
 
-DEBUG_DIR = Path("debug_detail")
-DEBUG_DIR.mkdir(exist_ok=True)
 
 PAYWALL_MARKERS = [
     "abonnez-vous pour accéder",

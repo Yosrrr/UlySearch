@@ -27,8 +27,6 @@ class Sotradies(Base):
     score_details = Column(JSONB, nullable=True)
     acheteur_connu = Column(String(10), nullable=True)  # "Oui" | "Non" | None
     date_derniere_action = Column(DateTime, nullable=True)
-    rappel_j3_envoye = Column(DateTime, nullable=True)
-    rappel_j1_envoye = Column(DateTime, nullable=True)
 
     description_detaillee = Column(Text, nullable=True)
     budget_detecte = Column(Numeric(14, 2), nullable=True)
