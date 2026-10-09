@@ -3,6 +3,7 @@
 import random
 import redis as _redis
 from app.core.config import settings
+from datetime import UTC, datetime
 # Import explicite : permet d'enregistrer tasks.run_cleanup dans Celery.
 # Celery autodiscover charge app.workers.tasks, pas automatiquement
 # cleanup_tasks.py.
@@ -88,7 +89,7 @@ def test_single_source(source_id: int):
 
         try:
             tenders = scraper.fetch_tenders()
-            source.last_scraped = datetime.utcnow()
+            source.last_scraped = datetime.now(UTC).replace(tzinfo=None)  
             source.last_result_count = len(tenders)
             source.last_error = None
 

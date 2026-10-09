@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query, Response
-from datetime import datetime
-from sqlalchemy.orm import Session
 
+from datetime import UTC, datetime, timedelta
+from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.audit_log import AuditLog
 from app.models.sotradies import Sotradies
@@ -64,7 +64,7 @@ def export_audit_log(
 ):
     logs = _filtered_audit_log(db, utilisateur_email, action, limit)
 
-    date_str = datetime.utcnow().strftime("%Y%m%d")
+    date_str =datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%d")
     if format == "xlsx":
         content = audit_log_to_excel(logs)
         media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

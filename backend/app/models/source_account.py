@@ -1,7 +1,7 @@
 """Identifiants privés d'une source, propres à une entreprise."""
 
-from datetime import datetime
-
+from datetime import datetime, UTC
+from app.core.time_utils import now_naive
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, UniqueConstraint
 
 from app.core.database import Base
@@ -19,9 +19,9 @@ class SourceAccount(Base):
     )
     login = Column(String(255), nullable=False)
     password_encrypted = Column(String(2048), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False)
     updated_at = Column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        DateTime, default=now_naive, onupdate=now_naive, nullable=False
     )
 
     __table_args__ = (

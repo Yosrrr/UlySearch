@@ -5,8 +5,9 @@ La table `sotradies` reste l'offre brute globale, partagée entre
 tous les clients. Cette table porte tout ce qui est propre au client :
 score, catégorie, commercial assigné, décision, statut, rappels.
 """
-from datetime import datetime
 
+from sqlalchemy import Index
+from app.core.time_utils import now_naive
 from sqlalchemy import (
     Column,
     DateTime,
@@ -69,13 +70,13 @@ class CompanyTender(Base):
 
     created_at = Column(
         DateTime,
-        default=datetime.utcnow,
+        default=now_naive,
         nullable=False,
     )
     updated_at = Column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=now_naive,
+        onupdate=now_naive,
         nullable=False,
     )
 
@@ -91,7 +92,9 @@ class CompanyTender(Base):
             "company_id",
             "tender_id",
             name="uq_company_tender",
+            
         ),
+        Index("ix_company_tenders_company_decision_score", "company_id", "decision", "score"),
     )
 
     def __repr__(self) -> str:

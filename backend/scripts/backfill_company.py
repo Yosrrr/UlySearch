@@ -57,8 +57,8 @@ def main() -> None:
                 nom="Sotradies",
                 pays="Tunisie",
                 onboarding_complete=True,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
+                created_at=datetime.now(UTC).replace(tzinfo=None) ,
+                updated_at=datetime.now(UTC).replace(tzinfo=None) ,
                 # owner_id sera défini après création de la company
             )
             db.add(new_company)
@@ -227,8 +227,8 @@ def main() -> None:
                     statut="nouveau",
                     commercial_id=commercial_id,
                     acheteur_connu=tender.acheteur_connu,
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow(),
+                    created_at=datetime.now(UTC).replace(tzinfo=None) ,
+                    updated_at=datetime.now(UTC).replace(tzinfo=None) ,
                 ))
 
                 created += 1

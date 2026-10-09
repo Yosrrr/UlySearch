@@ -5,8 +5,8 @@
    - company_tender_id : nouveau mode multi-tenant, à utiliser
      désormais pour tous les nouveaux envois.
 """
-from datetime import datetime
 
+from app.core.time_utils import now_naive
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 
@@ -35,6 +35,7 @@ class SentLog(Base):
 
     commercial = Column(String(255), nullable=False)
     canal = Column(String(20), nullable=False)  # "instantane" | "digest"
-    date_envoi = Column(DateTime, default=datetime.utcnow, nullable=False)
+    date_envoi = Column(DateTime, default=now_naive, nullable=False)
+
 
     company_tender = relationship("CompanyTender")

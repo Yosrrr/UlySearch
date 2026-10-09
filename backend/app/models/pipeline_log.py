@@ -5,7 +5,7 @@ Chaque étape importante est enregistrée ici pour audit/debug :
 scraping, filtrage date, déduplication, exclusion, IA, scoring,
 assignation, insertion, erreur.
 """
-from datetime import datetime
+from datetime import datetime,UTC
 
 from sqlalchemy import Column, DateTime, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -36,7 +36,8 @@ class PipelineLog(Base):
     # Détails techniques JSON sérialisables
     payload = Column(JSONB, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False , index=True)
 
     def __repr__(self) -> str:
         return (

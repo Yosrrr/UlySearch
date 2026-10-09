@@ -1,8 +1,9 @@
 """Trace chaque action effectuée sur une fiche marché, par qui et quand,
 ainsi que les connexions au système."""
-from datetime import datetime
+
 
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
+from app.core.time_utils import now_naive
 
 from app.core.database import Base
 
@@ -16,4 +17,4 @@ class AuditLog(Base):
     action = Column(String(50), nullable=False)
     # ex: "connexion" | "consultation" | "changement_statut"
     detail = Column(Text, nullable=True)
-    date_action = Column(DateTime, default=datetime.utcnow, nullable=False)
+    date_action = Column(DateTime, default=now_naive, nullable=False)

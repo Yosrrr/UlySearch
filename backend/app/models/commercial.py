@@ -2,7 +2,7 @@
 
 Les emails des commerciaux sont stockés en base de données, jamais dans le code.
 """
-from datetime import datetime
+
 
 from sqlalchemy import Boolean, Column, DateTime, Integer, String
 
@@ -10,6 +10,8 @@ from app.core.database import Base
 
 from sqlalchemy import ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
+from app.core.time_utils import now_naive
+
 class Commercial(Base):
     __tablename__ = "commercials"
 
@@ -28,11 +30,15 @@ class Commercial(Base):
     email = Column(String(255), nullable=False)
 
     actif = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(
+        DateTime,
+        default=now_naive,
+        nullable=False,
+    )
     updated_at = Column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=now_naive,
+        onupdate=now_naive,
         nullable=False,
     )
 

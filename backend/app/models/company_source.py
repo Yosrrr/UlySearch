@@ -5,8 +5,8 @@ Une source (ONMP, TUNEPS, site universel) est scrapée UNE seule fois
 par le pipeline. Chaque client choisit ensuite lesquelles il suit,
 via cette table d'association.
 """
-from datetime import datetime
 
+from app.core.time_utils import now_naive
 from sqlalchemy import (
     Boolean,
     Column,
@@ -43,7 +43,7 @@ class CompanySource(Base):
 
     created_at = Column(
         DateTime,
-        default=datetime.utcnow,
+        default=now_naive,
         nullable=False,
     )
 

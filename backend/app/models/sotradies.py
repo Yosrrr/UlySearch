@@ -1,5 +1,5 @@
-from datetime import datetime
 
+from app.core.time_utils import now_naive
 from sqlalchemy import Column, String, Text, DateTime, Date, Numeric
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -19,7 +19,9 @@ class Sotradies(Base):
     budget_estime = Column(Numeric(14, 2), nullable=True)
     source = Column(String(50), nullable=False)
     lien = Column(Text, nullable=False)
-    date_detection = Column(DateTime, default=datetime.utcnow, nullable=False)
+    date_detection = Column(
+        DateTime, default=now_naive, nullable=False, index=True
+    )
     raw_data = Column(JSONB, nullable=True)
 
     statut = Column(String(30), default="nouveau", nullable=False)

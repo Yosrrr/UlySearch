@@ -5,7 +5,7 @@ Séparé du modèle User pour garder l'authentification simple
 et stocker les données métier à part.
 """
 
-from datetime import datetime
+from datetime import datetime, UTC
 from sqlalchemy.orm import relationship
 from sqlalchemy import (
     Boolean,
@@ -18,8 +18,7 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import relationship
-
+from app.core.time_utils import now_naive
 from app.core.database import Base
 
 
@@ -104,11 +103,12 @@ class Company(Base):
     onboarding_complete = Column(Boolean, default=False)
 
     # ── Timestamps ──
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+   
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False)
     updated_at = Column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=now_naive,
+        onupdate=now_naive,
         nullable=False,
     )
     configuration = relationship(

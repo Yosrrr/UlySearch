@@ -19,6 +19,7 @@ Politique appliquée :
 
 from datetime import datetime, timedelta, UTC
 from pathlib import Path
+from datetime import UTC, datetime, timedelta
 from app.core.paths import RAW_DUMP_DIR
 
 from app.core.database import session_scope
@@ -90,7 +91,7 @@ def purge_raw_dumps(keep_days: int = 30) -> None:
         print("[cleanup] raw_dumps : dossier absent, rien à purger.")
         return
 
-    cutoff = datetime.utcnow() - timedelta(days=keep_days)
+    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=keep_days)
     deleted = 0
 
     for file_path in raw_dir.glob("*.txt"):
@@ -111,7 +112,7 @@ def purge_old_logs(keep_days: int = 365) -> None:
 
     Cette purge est indépendante de la purge des marchés.
     """
-    cutoff = datetime.utcnow() - timedelta(days=keep_days)
+    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=keep_days)
 
     with session_scope() as db:
         deleted_audit = (
@@ -142,7 +143,7 @@ def purge_old_tenders(keep_days: int = 365):
     """
     from sqlalchemy import select
 
-    cutoff = datetime.utcnow() - timedelta(days=keep_days)
+    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=keep_days)
 
     with session_scope() as db:
         # 1. Sélectionne les IDs (select() explicite — pas de Subquery implicite)

@@ -2,7 +2,7 @@
 # app/models/scraping_source.py
 # ============================================================
 
-from datetime import datetime
+
 from sqlalchemy import (
     Column, Integer, String, Boolean, DateTime, Text, func,
 )

@@ -1,16 +1,13 @@
-"""
-API des marchés — multi-tenant.
+﻿"""
+API des marchÃ©s â€” multi-tenant.
 
-- admin / user  : lit/écrit CompanyTender de LEUR company_id
+- admin / user  : lit/Ã©crit CompanyTender de LEUR company_id
 - superadmin    : lit les offres brutes Sotradies (vue plateforme)
 """
 from datetime import UTC, datetime
-from sqlalchemy import func
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from app.services.buyer_rematcher import rematch_all_tenders
-from app.services.buyer_rematcher import rematch_company_tenders
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
@@ -30,9 +27,9 @@ from app.services.export_service import tenders_to_excel, tenders_to_pdf
 
 router = APIRouter(prefix="/tenders", tags=["tenders"])
 
-# Statuts autorisés côté client (cycle commercial)
+# Statuts autorisÃ©s cÃ´tÃ© client (cycle commercial)
 CLIENT_STATUTS = {"nouveau", "en_cours", "sans_suite", "gagne", "perdu"}
-# Statuts autorisés côté superadmin (vue brute legacy)
+# Statuts autorisÃ©s cÃ´tÃ© superadmin (vue brute legacy)
 SUPERADMIN_STATUTS = {"nouveau", "retenu", "sans_suite"}
 
 
@@ -49,7 +46,7 @@ def _require_company_id(user: dict) -> int:
     if company_id is None:
         raise HTTPException(
             status_code=403,
-            detail="Compte non rattaché à une entreprise.",
+            detail="Compte non rattachÃ© Ã  une entreprise.",
         )
     return int(company_id)
 
@@ -75,17 +72,19 @@ def _filtered_for_client(
     offset: int = 0,
 ) -> tuple[list[TenderOut], int]:
     """
-    retourne (page_items, total_filtré).
-    total = nombre après TOUS les filtres (SQL + Python).
-    limit=None → pas de coupe (export).
+    F-019 : pagination en base.
+    Tous les filtres sont appliquÃ©s en SQL, puis COUNT + LIMIT/OFFSET.
+    Les noms de commerciaux sont chargÃ©s en une seule requÃªte (anti N+1).
     """
     query = (
         db.query(CompanyTender, Sotradies)
         .join(Sotradies, Sotradies.id == CompanyTender.tender_id)
         .filter(CompanyTender.company_id == company_id)
     )
+    if categorie and categorie != "Toutes":
+        query = query.filter(CompanyTender.categorie == categorie)
 
-    # ── Isolation commercial ──
+    # â”€â”€ Isolation commercial (l'utilisateur ne voit que ses offres) â”€â”€
     if user.get("profil") == "commercial":
         moi = (
             db.query(Commercial)
@@ -100,12 +99,14 @@ def _filtered_for_client(
             return [], 0
         query = query.filter(CompanyTender.commercial_id == moi.id)
 
+    # â”€â”€ Recherche texte â”€â”€
     if search:
         like = f"%{search}%"
         query = query.filter(
             Sotradies.objet.ilike(like) | Sotradies.acheteur.ilike(like)
         )
 
+    # â”€â”€ Statut / dÃ©cision â”€â”€
     if statut and statut != "Tous":
         if statut == "retenu":
             query = query.filter(CompanyTender.decision == "retenu")
@@ -114,38 +115,49 @@ def _filtered_for_client(
         else:
             query = query.filter(CompanyTender.statut == statut)
 
+    # â”€â”€ Filtre commercial par NOM : jointure au lieu d'une boucle Python â”€â”€
+    if commercial and commercial != "Tous":
+        query = query.join(
+            Commercial, Commercial.id == CompanyTender.commercial_id
+        ).filter(Commercial.nom == commercial)
+
+    # â”€â”€ Score minimum : colonne SQL â”€â”€
+    if score_min is not None:
+        query = query.filter(CompanyTender.score >= score_min)
+
+    # â”€â”€ CatÃ©gorie : colonne SQL â”€â”€
+    if categorie and categorie != "Toutes":
+        query = query.filter(CompanyTender.categorie == categorie)
+
+    # â”€â”€ Masquer les non pertinents par dÃ©faut â”€â”€
     if not include_rejected and score_min is None and (not statut or statut == "Tous"):
         query = query.filter(CompanyTender.score > 0)
 
-    results = query.order_by(Sotradies.date_detection.desc()).all()
+    # â•â•â• 1. Compter AVANT de paginer â•â•â•
+    total = query.count()
 
-    out: list[TenderOut] = []
-    for match, tender in results:
-        commercial_nom = _commercial_name(db, match.commercial_id)
-
-        if commercial and commercial != "Tous":
-            if (commercial_nom or "") != commercial:
-                continue
-
-        item = to_tender_out_from_match(match, tender, commercial_nom)
-
-        if score_min is not None and item.score < score_min:
-            continue
-
-        if categorie and categorie != "Toutes":
-            if (item.top_categorie or "") != categorie:
-                continue
-
-        out.append(item)
-
-    total = len(out)
-
-    if offset < 0:
-        offset = 0
+    # â•â•â• 2. Trier puis dÃ©couper en base â•â•â•
+    query = query.order_by(Sotradies.date_detection.desc())
+    if offset and offset > 0:
+        query = query.offset(offset)
     if limit is not None:
-        out = out[offset : offset + limit]
-    elif offset:
-        out = out[offset:]
+        query = query.limit(limit)
+
+    results = query.all()
+
+    # â•â•â• 3. Noms des commerciaux : UNE requÃªte (anti N+1) â•â•â•
+    commercial_ids = {m.commercial_id for m, _ in results if m.commercial_id}
+    noms: dict[int, str] = {}
+    if commercial_ids:
+        noms = {
+            c.id: c.nom
+            for c in db.query(Commercial).filter(Commercial.id.in_(commercial_ids))
+        }
+
+    out = [
+        to_tender_out_from_match(match, tender, noms.get(match.commercial_id))
+        for match, tender in results
+    ]
 
     return out, total
 
@@ -172,26 +184,25 @@ def _filtered_for_superadmin(
         query = query.filter(Sotradies.commercial_assigne == commercial)
     if statut and statut != "Tous":
         query = query.filter(Sotradies.statut == statut)
+    if categorie and categorie != "Toutes":
+        query = query.filter(Sotradies.categorie == categorie)
 
-    results = query.order_by(Sotradies.date_detection.desc()).all()
-    out = [to_tender_out_from_sotradies(t) for t in results]
+    total = query.count()
 
+    query = query.order_by(Sotradies.date_detection.desc())
+    if offset and offset > 0:
+        query = query.offset(offset)
+    if limit is not None:
+        query = query.limit(limit)
+
+    out = [to_tender_out_from_sotradies(t) for t in query.all()]
+
+    # score_min reste en Python : le score vient de score_details (JSONB),
+    # pas d'une colonne indexable.
     if score_min is not None:
         out = [t for t in out if t.score >= score_min]
     elif not include_rejected:
         out = [t for t in out if t.score > 0 or t.statut == "retenu"]
-
-    if categorie and categorie != "Toutes":
-        out = [t for t in out if (t.top_categorie or "") == categorie]
-
-    total = len(out)
-
-    if offset < 0:
-        offset = 0
-    if limit is not None:
-        out = out[offset : offset + limit]
-    elif offset:
-        out = out[offset:]
 
     return out, total
 
@@ -316,6 +327,12 @@ def list_rejected_tenders(
     db: Session = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
+    """
+    MarchÃ©s non retenus.
+    - superadmin : vue brute Sotradies (score depuis score_details â†’ filtre Python)
+    - client     : CompanyTender.decision == "rejete" (pagination SQL)
+    """
+    
     if _is_superadmin(user):
         results = (
             db.query(Sotradies)
@@ -334,7 +351,9 @@ def list_rejected_tenders(
             items=items, total=total, limit=limit, offset=offset
         )
 
+    # â”€â”€ Vue client (pagination SQL) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     company_id = _require_company_id(user)
+
     query = (
         db.query(CompanyTender, Sotradies)
         .join(Sotradies, Sotradies.id == CompanyTender.tender_id)
@@ -344,6 +363,7 @@ def list_rejected_tenders(
         )
     )
 
+    # Isolation commercial : ne voit que ses offres
     if user.get("profil") == "commercial":
         moi = (
             db.query(Commercial)
@@ -360,20 +380,36 @@ def list_rejected_tenders(
             )
         query = query.filter(CompanyTender.commercial_id == moi.id)
 
-    rows = query.order_by(Sotradies.date_detection.desc()).all()
-    full = [
-        to_tender_out_from_match(
-            m, t, _commercial_name(db, m.commercial_id)
+    total = query.count()
+
+    rows = (
+        query.order_by(
+            Sotradies.date_detection.desc(),
+            CompanyTender.id.desc(),
         )
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    noms = _commercial_names(db, {m.commercial_id for m, _ in rows})
+    items = [
+        to_tender_out_from_match(m, t, noms.get(m.commercial_id))
         for m, t in rows
     ]
-    total = len(full)
-    items = full[offset : offset + limit]
     return TenderListPage(
         items=items, total=total, limit=limit, offset=offset
     )
 
-
+def _commercial_names(db: Session, ids: set[int]) -> dict[int, str]:
+    """Charge les noms de commerciaux en UNE requÃªte (anti N+1, F-019)."""
+    ids = {i for i in ids if i}
+    if not ids:
+        return {}
+    return {
+        c.id: c.nom
+        for c in db.query(Commercial).filter(Commercial.id.in_(ids))
+    }
 
 @router.patch("/{tender_id}/feedback", response_model=TenderOut)
 def update_tender_feedback(
@@ -383,7 +419,7 @@ def update_tender_feedback(
      user: dict = Depends(get_current_user),
 ):
     if _is_superadmin(user):
-        raise HTTPException(status_code=403, detail="Le feedback est réservé aux clients.")
+        raise HTTPException(status_code=403, detail="Le feedback est rÃ©servÃ© aux clients.")
     if payload.feedback not in {"pertinent", "pas_pertinent"}:
         raise HTTPException(status_code=400, detail="Feedback invalide.")
 
@@ -398,7 +434,7 @@ def update_tender_feedback(
         .first()
     )
     if not row:
-        raise HTTPException(status_code=404, detail="Marché introuvable")
+        raise HTTPException(status_code=404, detail="MarchÃ© introuvable")
 
     match, tender = row
     match.feedback = payload.feedback
@@ -423,7 +459,7 @@ def get_tender(
     if _is_superadmin(user):
         t = db.query(Sotradies).filter_by(id=tender_id).first()
         if not t:
-            raise HTTPException(status_code=404, detail="Marché introuvable")
+            raise HTTPException(status_code=404, detail="MarchÃ© introuvable")
         result = to_tender_out_from_sotradies(t)
     else:
         company_id = _require_company_id(user)
@@ -437,7 +473,7 @@ def get_tender(
             .first()
         )
         if not row:
-            raise HTTPException(status_code=404, detail="Marché introuvable")
+            raise HTTPException(status_code=404, detail="MarchÃ© introuvable")
         match, tender = row
         result = to_tender_out_from_match(
             match, tender, _commercial_name(db, match.commercial_id)
@@ -462,13 +498,13 @@ def update_tender_status(
 ):
     now = datetime.now(UTC).replace(tzinfo=None)
 
-    # Superadmin : vue brute Sotradies (comportement inchangé)
+    # Superadmin : vue brute Sotradies (comportement inchangÃ©)
     if _is_superadmin(user):
         if payload.statut not in SUPERADMIN_STATUTS:
             raise HTTPException(status_code=400, detail="Statut invalide.")
         t = db.query(Sotradies).filter_by(id=tender_id).first()
         if not t:
-            raise HTTPException(status_code=404, detail="Marché introuvable")
+            raise HTTPException(status_code=404, detail="MarchÃ© introuvable")
         ancien = t.statut
         t.statut = payload.statut
         t.date_derniere_action = now
@@ -490,11 +526,11 @@ def update_tender_status(
         .first()
     )
     if not match:
-        raise HTTPException(status_code=404, detail="Marché introuvable")
+        raise HTTPException(status_code=404, detail="MarchÃ© introuvable")
 
     if payload.statut == "retenu":
-        # Repêchage = décision humaine : change la DÉCISION.
-        # feedback="pertinent" protège l'offre contre les recalculs automatiques.
+        # RepÃªchage = dÃ©cision humaine : change la DÃ‰CISION.
+        # feedback="pertinent" protÃ¨ge l'offre contre les recalculs automatiques.
         ancien = match.decision
         match.decision = "retenu"
         match.feedback = "pertinent"

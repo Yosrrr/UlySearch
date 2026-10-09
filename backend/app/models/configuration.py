@@ -1,8 +1,8 @@
 """Paramètres de configuration du système (mots-clés, seuils, sources actives, assignation)."""
-from sqlalchemy import Column, Integer, String, Boolean, Text, DateTime
+from sqlalchemy import Column, Integer, String, Text, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
-from datetime import datetime
 
+from app.core.time_utils import now_naive
 from app.core.database import Base
 
 from sqlalchemy import ForeignKey
@@ -66,7 +66,9 @@ class Configuration(Base):
     assignment_rules = Column(JSONB, nullable=False, default=dict)
     
     # ===== Metadata =====
-    derniere_modification = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    derniere_modification = Column(
+    DateTime, default=now_naive, onupdate=now_naive, nullable=False
+    )
     modifie_par = Column(String(255), nullable=True)  # email de l'utilisateur
     notes = Column(Text, nullable=True)
     

@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-BACKEND_ROOT = Path(__file__).resolve().parents[1]
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = Path(os.environ.get("DATA_DIR", BACKEND_ROOT / "data"))
 RAW_DUMP_DIR = DATA_DIR / "raw_scrapes"
 DEBUG_DETAIL_DIR = DATA_DIR / "debug_detail"

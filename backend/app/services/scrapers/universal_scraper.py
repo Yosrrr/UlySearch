@@ -94,8 +94,8 @@ def _fetch_detail_page(url: str, use_browser: bool = False, auth=None) -> Option
         root = soup.find("main") or soup.body or soup
         text = _compact(root.get_text("\n", strip=True))
         return text[:8000]  # limite pour l'IA
-    except Exception as exc:
-        logger.warning(f"Erreur extraction texte détail {url}: {exc}")
+    except Exception:
+        logger.warning(f"Erreur extraction texte détail {url}")
         return None
 
 
@@ -104,6 +104,10 @@ def _parse_detail_date(value: str | None) -> Optional[datetime]:
         return None
     return _parse_date(value.strip())
 
+def _dedup_key(raw: SotradiesRaw) -> str:
+    """Clé de dédup basée sur l'URL (une référence mal extraite ne doit
+    jamais écraser une offre distincte)."""
+    return urldefrag(str(raw.lien or ""))[0].rstrip("/").lower()
 
 def _enrich_raw_with_detail(
     raw: SotradiesRaw,
@@ -117,14 +121,18 @@ def _enrich_raw_with_detail(
 
     Si la page est inaccessible ou l'IA échoue, retourne le raw original.
     """
-    detail_text = _fetch_detail_page(raw.lien, use_browser=use_browser, auth=auth)
-    if not detail_text or len(detail_text) < 100:
-        if _ENRICH_DETAIL:
-            try:
-                raw = _enrich_raw_with_detail(...)
-                time.sleep(1)
-            except Exception as exc:
-                logger.warning(f"[{source_name}] Page de détail trop courte ou vide : {raw.lien}")
+    detail_text = _fetch_detail_page(
+        raw.lien,
+        use_browser=use_browser,
+        auth=auth,
+    )
+
+    if not detail_text or len(detail_text.strip()) < 100:
+        logger.warning(
+            "[%s] Détail absent ou trop court : %s",
+            source_name,
+            raw.lien,
+        )
         return raw
 
     detail_reference = _extract_reference(detail_text)
@@ -322,8 +330,8 @@ def _fetch_browser(url: str, timeout: int = 45, auth=None) -> Optional[str]:
                 except Exception:
                     pass
 
-    except Exception as exc:
-        logger.error(f"Erreur Playwright {url}: {type(exc).__name__}: {exc}")
+    except Exception :
+        logger.error(f"Erreur Playwright {url}")
         return None
     finally:
         if browser_loop is not None:
@@ -811,83 +819,228 @@ class UniversalScraper:
         self.auth = auth
 
     def fetch_tenders(self) -> list[SotradiesRaw]:
+        """Collecte les annonces des pages de liste.
+
+        L’IA choisit des identifiants de liens réels. Si elle est désactivée ou
+        indisponible, les règles déterministes prennent le relais.
+
+        L’enrichissement des détails reste géré par le pipeline, afin d’éviter
+        de charger la page de détail une seconde fois ici.
+        """
         all_tenders: list[SotradiesRaw] = []
         current_url = self.url
-        visited: set[str] = set()
-        seen_keys: set[str] = set()
+        visited_pages: set[str] = set()
+        seen_tender_urls: set[str] = set()
         page_num = 0
 
         while current_url and page_num < self.max_pages:
-            if current_url in visited:
+            page_key = urldefrag(current_url)[0]
+            if page_key in visited_pages:
+                logger.info("Pagination déjà visitée : %s", current_url)
                 break
-            visited.add(current_url)
-            page_num += 1
-            print(f"[universal] {self.source_name} — page {page_num}/{self.max_pages}: {current_url}")
 
-            html = _fetch_page(current_url, use_browser=self.use_browser, auth=self.auth)
+            visited_pages.add(page_key)
+            page_num += 1
+
+            logger.info(
+                "[universal] %s — page %s/%s : %s",
+                self.source_name,
+                page_num,
+                self.max_pages,
+                current_url,
+            )
+
+            try:
+                html = _fetch_page(
+                    current_url,
+                    use_browser=self.use_browser,
+                    auth=self.auth,
+                )
+            except Exception:
+                logger.exception(
+                    "[universal] Erreur de récupération de la page %s",
+                    current_url,
+                )
+                if page_num == 1:
+                    raise
+                break
+
             if not html:
-                print(f"[universal] {self.source_name} — échec fetch")
+                logger.warning(
+                    "[universal] Aucun HTML récupéré : %s",
+                    current_url,
+                )
                 if page_num == 1:
                     raise RuntimeError(
-                        f"Impossible de charger la première page de {self.source_name} : {current_url}"
+                        f"Impossible de charger la première page "
+                        f"de {self.source_name} : {current_url}"
                     )
                 break
 
-            page_text, link_catalog, links_by_id = _prepare_page(html, current_url)
+            page_text, link_catalog, links_by_id = _prepare_page(
+                html,
+                current_url,
+            )
+
             if len(page_text) < 50 or not links_by_id:
-                print(f"[universal] {self.source_name} — page vide ou sans lien exploitable")
+                logger.info(
+                    "[universal] Page vide ou sans liens exploitables : %s",
+                    current_url,
+                )
                 break
-            print(f"[universal] {self.source_name} — texte : {len(page_text)} chars — liens : {len(links_by_id)}")
 
-            # Étape IA : sélection d'identifiants
-            ia_ids, next_id = _select_opportunity_links(link_catalog, current_url)
-            print(f"[universal] {self.source_name} — {len(ia_ids)} lien(s) sélectionné(s) par l'IA")
+            logger.info(
+                "[universal] %s — texte=%s caractères, liens=%s",
+                self.source_name,
+                len(page_text),
+                len(links_by_id),
+            )
 
-            # Filet déterministe : référence + date dans le contexte réel
-            deterministic_ids = [lid for lid, d in links_by_id.items() if d["has_ref"] and d["has_date"]]
-            valid_ia_ids = [lid for lid in ia_ids if lid in links_by_id]
-            selected = list(dict.fromkeys(valid_ia_ids + deterministic_ids))
-            if not selected:
-                selected = _fallback_opportunity_ids(links_by_id)
-                print(f"[universal] {self.source_name} — fallback déterministe : {len(selected)} lien(s)")
-            if deterministic_ids:
-                print(f"[universal] {self.source_name} — {len(deterministic_ids)} lien(s) avec référence+date (déterministe)")
+            # Sélection IA : les identifiants doivent appartenir au catalogue
+            # Python extrait de cette page. Si l’IA est désactivée ou échoue,
+            # _select_opportunity_links doit renvoyer [], None ou lever une erreur.
+            try:
+                ia_ids, next_id = _select_opportunity_links(
+                    link_catalog,
+                    current_url,
+                )
+            except Exception:
+                logger.exception(
+                    "[universal] Sélection IA échouée pour %s",
+                    current_url,
+                )
+                ia_ids, next_id = [], None
 
-            accepted = rejected = 0
-            for link_id in selected:
+            valid_ia_ids = [
+                link_id
+                for link_id in ia_ids
+                if link_id in links_by_id
+                and not links_by_id[link_id]["is_next"]
+            ]
+
+            # Filet déterministe : référence + date dans le contexte réel.
+            deterministic_ids = [
+                link_id
+                for link_id, data in links_by_id.items()
+                if data["has_ref"]
+                and data["has_date"]
+                and not data["is_next"]
+            ]
+
+            selected_ids = list(dict.fromkeys(valid_ia_ids + deterministic_ids))
+
+            # Si ni l’IA ni le filet référence/date n’ont trouvé de lien,
+            # utiliser les heuristiques métier.
+            if not selected_ids:
+                selected_ids = _fallback_opportunity_ids(links_by_id)
+                logger.info(
+                    "[universal] Fallback déterministe : %s lien(s)",
+                    len(selected_ids),
+                )
+
+            accepted = 0
+            rejected = 0
+
+            for link_id in selected_ids:
                 link_data = links_by_id.get(link_id)
                 if link_data is None:
-                    logger.warning(f"lien_id inventé rejeté : {link_id}")
+                    logger.warning("Identifiant de lien inconnu rejeté : %s", link_id)
                     rejected += 1
                     continue
+
                 if link_data["is_next"]:
                     continue
-                raw = _raw_from_link(link_data, self.source_name, self.default_buyer)
+
+                raw = _raw_from_link(
+                    link_data,
+                    self.source_name,
+                    self.default_buyer,
+                )
                 if raw is None:
                     rejected += 1
                     continue
-                key = (raw.reference or raw.lien.rstrip("/")).lower()
-                if key in seen_keys:
-                    continue
-                seen_keys.add(key)
 
-                # Enrichissement depuis la page de détail
+                # L’URL est une meilleure clé locale que la référence :
+                # des acheteurs différents peuvent réutiliser la même référence.
+                tender_url = urldefrag(raw.lien or link_data["url"])[0]
+                parsed_url = urlparse(tender_url)
+                canonical_url = parsed_url._replace(
+                    path=parsed_url.path.rstrip("/") or "/",
+                    fragment="",
+                ).geturl()
+
+                if canonical_url in seen_tender_urls:
+                    continue
+
+                seen_tender_urls.add(canonical_url)
+
+                # Enrichissement page de détail : OFF par défaut.
+                # Le pipeline enrichit déjà les offres RETENUES
+                # (_enrich_with_ai), inutile de payer le coût ici.
+                if _ENRICH_DETAIL:
+                    try:
+                        raw = _enrich_raw_with_detail(
+                            raw,
+                            source_name=self.source_name,
+                            use_browser=self.use_browser,
+                            auth=self.auth,
+                        )
+                        time.sleep(1)
+                    except Exception as exc:
+                        logger.warning(
+                            f"[{self.source_name}] Enrichissement détail "
+                            f"échoué ({raw.lien}): {exc}"
+                        )
+
                 all_tenders.append(raw)
                 accepted += 1
 
-            print(f"[universal] {self.source_name} — acceptées={accepted}, rejetées={rejected}")
+            logger.info(
+                "[universal] %s — acceptées=%s, rejetées=%s",
+                self.source_name,
+                accepted,
+                rejected,
+            )
 
-            # Pagination : IA d'abord, sinon détection déterministe
+            # Utiliser la pagination choisie par l’IA seulement si l’identifiant
+            # existe réellement dans le catalogue. Sinon, détecter « suivant »
+            # de manière déterministe.
             next_link = links_by_id.get(next_id) if next_id else None
+
             if next_link is None:
-                next_link = next((d for d in links_by_id.values() if d["is_next"]), None)
-            if not next_link or next_link["url"] in visited:
+                next_link = next(
+                    (
+                        data
+                        for data in links_by_id.values()
+                        if data["is_next"]
+                    ),
+                    None,
+                )
+
+            if not next_link:
                 break
-            if not _same_domain(next_link["url"], self.url):
-                logger.warning(f"Pagination hors domaine rejetée : {next_link['url']}")
+
+            next_url = next_link["url"]
+
+            # Ne jamais suivre la pagination vers une autre origine.
+            if not _same_domain(next_url, self.url):
+                logger.warning(
+                    "Pagination hors origine rejetée : %s",
+                    next_url,
+                )
                 break
-            current_url = next_link["url"]
+
+            if urldefrag(next_url)[0] in visited_pages:
+                logger.info("Pagination cyclique arrêtée : %s", next_url)
+                break
+
+            current_url = next_url
             time.sleep(3)
 
-        print(f"[universal] {self.source_name} — TOTAL : {len(all_tenders)} offre(s) sur {page_num} page(s)")
+        logger.info(
+            "[universal] %s — total=%s annonce(s), pages=%s",
+            self.source_name,
+            len(all_tenders),
+            page_num,
+        )
         return all_tenders
