@@ -73,8 +73,7 @@ export async function getTenders(filters = {}) {
 
 export async function repêcherTender(id) {
   const { data } = await apiClient.patch(`/tenders/${id}`, {
-    decision: "retenu",
-    // ou le champ exact attendu par le backend l.201/428
+    statut: "retenu",
   });
   return data;
 }

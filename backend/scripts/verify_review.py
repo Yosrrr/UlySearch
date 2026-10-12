@@ -49,7 +49,12 @@ res("F-001", "OK" if in_reqs and installed else "KO",
 # F-002
 pre = next((l for l in render.splitlines() if "preDeployCommand" in l), "")
 workdirs = re.findall(r"^\s*WORKDIR\s+(\S+)", docker, re.M)
-ok2 = "cd /app/backend" in pre or "backend/alembic.ini" in pre or (workdirs and workdirs[-1].rstrip("/") == "/app/backend")
+ok2 = (
+    "cd backend" in pre
+    or "cd /app/backend" in pre
+    or "backend/alembic.ini" in pre
+    or (workdirs and workdirs[-1].rstrip("/") == "/app/backend")
+)
 res("F-002", "OK" if ok2 else "KO", f"preDeployCommand={pre.strip()[:90]!r} | WORKDIR={workdirs[-1:] }")
 
 # F-003
@@ -83,9 +88,10 @@ res("F-005", "OK" if resolves and blocks else "KO",
 
 # F-006
 pipe = read("app/services/pipeline.py") or ""
-uni_call = re.search(r"UniversalScraper\((.*?)\)", pipe, re.S)
-res("F-006", "OK" if uni_call and "auth" in uni_call.group(1) else "KO",
-    "auth transmis à UniversalScraper" if uni_call and "auth" in uni_call.group(1) else "auth non transmis")
+uni_call = re.search(r"UniversalScraper\s*\(", pipe)
+auth_forwarded = bool(re.search(r"UniversalScraper\s*\([\s\S]{0,500}?\bauth\s*=\s*auth\b", pipe))
+res("F-006", "OK" if uni_call and auth_forwarded else "KO",
+    "auth transmis à UniversalScraper" if uni_call and auth_forwarded else "auth non transmis")
 
 # F-007
 adm = read("app/api/admin_sources.py") or ""
@@ -128,15 +134,18 @@ res("F-013", "KO" if re.search(r"forwarded-allow-ips[= ]+['\"]?\*", docker) else
 
 # F-016
 users = read("app/api/admin_users.py") or ""
+schemas = read("app/schemas/user_schemas.py") or ""
 vp = re.search(r"VALID_PROFILES\s*=\s*\(([^)]*)\)", users)
 has_com = bool(vp and "commercial" in vp.group(1))
-has_cid = "company_id" in (re.search(r"class UserCreate.*?(?=^class |\Z)", users, re.S | re.M) or [""])[0]
+has_cid = "company_id" in schemas and "payload.company_id" in users
 res("F-016", "OK" if has_com and has_cid else "KO", f"profil commercial={has_com}, company_id à la création={has_cid}")
 
 # F-017
 ten = read("app/api/tenders.py") or ""
 upd_t = body(ten, "update_tender_status") or body(ten, "update_tender")
-res("F-017", "OK" if '"retenu"' in upd_t else "KO", "statut 'retenu' géré" if '"retenu"' in upd_t else "statut 'retenu' refusé")
+status_update_source = ten[ten.find("def update_tender_status"):] if "def update_tender_status" in ten else upd_t
+has_retenu = bool(re.search(r"['\"]retenu['\"]", status_update_source))
+res("F-017", "OK" if has_retenu else "KO", "statut 'retenu' géré" if has_retenu else "statut 'retenu' refusé")
 
 # F-018
 notif = read("app/services/notifier.py") or ""

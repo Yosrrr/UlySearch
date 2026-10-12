@@ -128,7 +128,14 @@ def login(
     db.add(AuditLog(utilisateur_email=user.email, action="connexion", detail=None))
     db.commit()
     _set_auth_cookie(response, token)
-    return {"user": {"email": user.email, "nom": user.nom, "profil": user.profil}}
+    return {"user": {
+        "id": user.id,
+        "email": user.email,
+        "nom": user.nom,
+        "profil": user.profil,
+        "company_id": user.company_id,
+        "actif": user.actif,
+    }}
 
 
 @router.post("/logout")
@@ -157,5 +164,12 @@ def get_current_user_info(
         raise HTTPException(status_code=401, detail="Session invalide")
 
     return {
-        "user": {"email": db_user.email, "nom": db_user.nom, "profil": db_user.profil},
+        "user": {
+            "id": db_user.id,
+            "email": db_user.email,
+            "nom": db_user.nom,
+            "profil": db_user.profil,
+            "company_id": db_user.company_id,
+            "actif": db_user.actif,
+        },
     }

@@ -39,9 +39,7 @@ export default function TendersPage() {
   async function handleExport(format) {
     setExporting(true);
     try {
-      // Adapte l'ordre si ton api/tenders.js est (format, filters)
-      await exportTenders({ ...filters, format });
-      // ou : await exportTenders(format, filters);
+      await exportTenders(format, filters);
     } catch (err) {
       console.error("Export échoué", err);
     } finally {

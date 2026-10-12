@@ -7,7 +7,7 @@ et rattache toutes les données existantes.
 """
 
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 
 from app.models import (  # noqa: F401
     audit_log, commercial, company, company_source,
