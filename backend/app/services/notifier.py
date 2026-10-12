@@ -160,17 +160,26 @@ def dispatch_new_tenders(force: bool = False) -> int:
 # Digest quotidien
 # ──────────────────────────────────────────────────────────────
 
+def _digest_target_date(value: date | None = None) -> date:
+    """Retourne la date UTC affichée dans le digest."""
+    return value or datetime.now(UTC).date()
+
+
 def send_daily_digest(
     target_date: date | None = None,
     force: bool = False,
 ) -> int:
-    """Digest quotidien : uniquement les marchés retenus à la date cible,
-    non encore envoyés (ni en instantané ni en digest)."""
+    """Envoie les marchés retenus qui n'ont encore jamais été notifiés.
+
+    Le journal d'envoi est la source de vérité : filtrer sur une fenêtre
+    de détection ferait perdre les offres du week-end ou celles retardées
+    par une panne temporaire du worker.
+    """
     if is_weekend() and not force:
         print("[notifier] Week-end : pas de digest.")
         return 0
 
-    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=4)
+    target_date = _digest_target_date(target_date)
     envoyes = 0
 
     with session_scope() as db:
@@ -188,7 +197,9 @@ def send_daily_digest(
             )
 
             for commercial in commerciaux:
-                # Marchés retenus pour ce commercial, détectés à la date cible
+                # Les SentLog empêchent les doublons et permettent de
+                # rattraper les offres détectées pendant le week-end ou
+                # pendant une interruption temporaire du worker.
                 matches = (
                     db.query(CompanyTender)
                     .join(Sotradies, Sotradies.id == CompanyTender.tender_id)

@@ -149,10 +149,19 @@ res("F-017", "OK" if has_retenu else "KO", "statut 'retenu' géré" if has_reten
 
 # F-018
 notif = read("app/services/notifier.py") or ""
-dig = body(notif, "send_daily_digest")
-cut = re.search(r"cutoff\s*=.*?timedelta\(([^)]*)\)", dig)
-val = cut.group(1) if cut else "?"
-res("F-018", "OK" if cut and ("days" in val) else "~~", f"fenêtre du résumé : timedelta({val}) (24 h = week-end perdu le lundi)")
+digest_start = notif.find("def send_daily_digest")
+digest_end = notif.find("\ndef send_reminders", digest_start)
+dig = notif[digest_start:digest_end if digest_end != -1 else None]
+has_default_date = "_digest_target_date" in notif and "target_date = _digest_target_date(target_date)" in dig
+uses_sent_log = "deja_tous = deja_instantane | deja_digest" in dig
+has_stale_cutoff = bool(re.search(r"^\s*cutoff\s*=", dig, re.M))
+res(
+    "F-018",
+    "OK" if has_default_date and uses_sent_log and not has_stale_cutoff else "KO",
+    "date UTC explicite et rattrapage fondé sur SentLog"
+    if has_default_date and uses_sent_log and not has_stale_cutoff
+    else "sélection du digest encore incomplète",
+)
 
 # F-021
 tun = read("app/services/scrapers/tuneps_scraper.py") or ""
