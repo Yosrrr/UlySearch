@@ -198,8 +198,8 @@ def _is_safe_url(url: str) -> bool:
         addr_infos = socket.getaddrinfo(hostname, parsed.port or 443)
         for family, _, _, _, sockaddr in addr_infos:
             ip = ipaddress.ip_address(sockaddr[0])
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
-                logger.warning(f"[SSRF] URL bloquée (IP interne) : {url} → {ip}")
+            if not ip.is_global:
+                logger.warning(f"[SSRF] URL bloquée (IP non publique) : {url} → {ip}")
                 return False
         return True
     except (socket.gaierror, ValueError, OSError) as exc:
@@ -237,11 +237,14 @@ def _fetch_browser(url: str, timeout: int = 45, auth=None) -> Optional[str]:
     """
     Navigateur réel (Playwright) avec stratégie en cascade :
     1. networkidle (sites statiques)
-    2. domcontentloaded (SPA, WebSocket, sites avec connexions permanentes)
+    2. domcontentloaded (SPA, WebSocket, connexions permanentes)
+
+    SEC-001 : chaque requête du navigateur (navigation, redirection,
+    sous-ressource) est validée — pas seulement l'URL initiale.
     """
     if not _is_safe_url(url):
         return None
-    
+
     try:
         from playwright.sync_api import TimeoutError as PwTimeout, sync_playwright
     except ImportError:
@@ -250,6 +253,14 @@ def _fetch_browser(url: str, timeout: int = 45, auth=None) -> Optional[str]:
 
     browser_loop = None
     previous_loop = None
+
+    def _guard(route, request):
+        """Bloque toute requête vers une adresse non publique."""
+        if _is_safe_url(request.url):
+            route.continue_()
+        else:
+            logger.warning(f"[SSRF] Requête navigateur bloquée : {request.url}")
+            route.abort()
 
     try:
         # Uvicorn peut exécuter ce scraper dans un thread équipé d'une
@@ -276,11 +287,14 @@ def _fetch_browser(url: str, timeout: int = 45, auth=None) -> Optional[str]:
                     if auth else None
                 ),
             )
+
+            # SEC-001 : garde SSRF sur TOUTES les requêtes du contexte
+            context.route("**/*", _guard)
+
             try:
                 page = context.new_page()
                 nav_timeout = min(timeout, 30) * 1000
 
-                # Tentative 1 : networkidle
                 loaded = False
                 try:
                     page.goto(url, wait_until="networkidle", timeout=nav_timeout)
@@ -288,7 +302,6 @@ def _fetch_browser(url: str, timeout: int = 45, auth=None) -> Optional[str]:
                 except PwTimeout:
                     logger.info(f"{url} : networkidle timeout → domcontentloaded")
 
-                # Tentative 2 : domcontentloaded
                 if not loaded:
                     try:
                         page.goto(url, wait_until="domcontentloaded", timeout=nav_timeout)
@@ -299,7 +312,11 @@ def _fetch_browser(url: str, timeout: int = 45, auth=None) -> Optional[str]:
                 if not loaded:
                     return None
 
-                # Attendre un sélecteur de contenu
+                # SEC-001 : vérifier où l'on a réellement atterri
+                if not _is_safe_url(page.url):
+                    logger.warning(f"[SSRF] Redirection vers une adresse interne : {page.url}")
+                    return None
+
                 _SELECTORS = [
                     "article", "table tbody tr", "[class*='result']",
                     "[class*='tender']", "[class*='avis']", "[class*='marche']",
@@ -314,7 +331,6 @@ def _fetch_browser(url: str, timeout: int = 45, auth=None) -> Optional[str]:
                     except PwTimeout:
                         continue
 
-                # Scroll et pause via Playwright (non bloquant)
                 page.mouse.wheel(0, 2000)
                 page.wait_for_timeout(2_000)
 
@@ -330,14 +346,13 @@ def _fetch_browser(url: str, timeout: int = 45, auth=None) -> Optional[str]:
                 except Exception:
                     pass
 
-    except Exception :
-        logger.error(f"Erreur Playwright {url}")
+    except Exception as exc:
+        logger.error(f"Erreur Playwright {url}: {type(exc).__name__}")
         return None
     finally:
         if browser_loop is not None:
             asyncio.set_event_loop(previous_loop)
             browser_loop.close()
-
 
 def _needs_js(html: str) -> bool:
     soup = BeautifulSoup(html, "html.parser")

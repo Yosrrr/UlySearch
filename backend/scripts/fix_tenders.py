@@ -85,14 +85,7 @@ NEW_UT = '''def update_tender_status(
 
     # Client
     company_id = _require_company_id(user)
-    match = (
-        db.query(CompanyTender)
-        .filter_by(company_id=company_id, tender_id=tender_id)
-        .first()
-    )
-    if not match:
-        raise HTTPException(status_code=404, detail="Marché introuvable")
-
+    match = _get_match_scoped(db, user, company_id, tender_id)
     if payload.statut == "retenu":
         # Repêchage = décision humaine : change la DÉCISION.
         # feedback="pertinent" protège l'offre contre les recalculs automatiques.

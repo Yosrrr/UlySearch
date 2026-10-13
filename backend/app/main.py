@@ -75,7 +75,6 @@ from app.api.buyers import router as buyers_router
 from app.api.registration import (   
     router as registration_router,
 )
-import app.models 
  
 import logging
 
@@ -90,11 +89,16 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 # ---------------------------------------------------------------------------
 # Application FastAPI
 # ---------------------------------------------------------------------------
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_default_configuration()
+    yield
 
 _is_production = str(settings.ENV).lower() == "production"
 
 app = FastAPI(
     title=settings.APP_NAME,
+    lifespan=lifespan,                             
     docs_url=None if _is_production else "/docs",
     redoc_url=None if _is_production else "/redoc",
     openapi_url=None if _is_production else "/openapi.json",
@@ -223,11 +227,6 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    init_default_configuration()
-    yield
 
 
 # ---------------------------------------------------------------------------

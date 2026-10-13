@@ -1,5 +1,5 @@
-import io
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
+﻿import io
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from fastapi import BackgroundTasks
 from app.services.buyer_rematcher import rematch_company_tenders 
@@ -8,11 +8,10 @@ from app.models.known_buyer import KnownBuyer
 from app.schemas.buyer import BuyerOut, BuyerCreate, BuyerUpdate
 from app.services.buyer_importer import import_known_buyers
 from app.services.buyer_ocr_importer import import_buyers_from_scan
-from app.api.deps import get_current_user
-from app.core.rate_limiter import limiter
+from app.api.deps import get_current_user, require_admin_or_superadmin
+
 
 router = APIRouter(prefix="/buyers", tags=["buyers"])
-
 MAX_SCAN_SIZE = 15 * 1024 * 1024  # 15 Mo
 MAGIC_BYTES = {b"%PDF": "pdf", b"\xff\xd8\xff": "jpg", b"\x89PNG\r\n\x1a\n": "png"}
 
@@ -39,6 +38,7 @@ def list_buyers(db: Session = Depends(get_db), user=Depends(get_current_user)):
     return _buyer_query(db, user).order_by(KnownBuyer.nom_acheteur).all()
 
 
+    
 @router.post("", response_model=BuyerOut)
 def create_buyer(
     payload: BuyerCreate,
@@ -71,54 +71,53 @@ def create_buyer(
 
 
 @router.post("/import")
-async def import_buyers(
+def import_buyers(                      # async def → def
     file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user)
+    user=Depends(require_admin_or_superadmin),
 ):
-    if not file.filename.endswith((".xlsx", ".xls")):
-        raise HTTPException(status_code=400, detail="Le fichier doit être un Excel (.xlsx ou .xls).")
-
-    contents = await file.read()
-    try:
-        company_id = None if user.get("profil") == "superadmin" else int(user["company_id"])
-        count = import_known_buyers(db, io.BytesIO(contents), company_id=company_id)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Échec de l'import : {exc}")
-
-    return {"imported": count}
-
-
-@router.post("/import-scan")                        # ← corrigé : "/import-scan" au lieu de "/buyers/import-scan"
-@limiter.limit("3/minute")
-async def import_buyers_scan(
-    request: Request,                               # ← DÉPLACÉ EN PREMIER (était après file)
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    user=Depends(get_current_user)
-):
-    allowed = (".pdf", ".jpg", ".jpeg", ".png")
-    if not file.filename.lower().endswith(allowed):
-        raise HTTPException(status_code=400, detail="Le fichier doit être un PDF, JPG ou PNG.")
-
-    contents = await file.read()
+    contents = file.file.read()         # await file.read() → file.file.read()
 
     if len(contents) > MAX_SCAN_SIZE:
-        raise HTTPException(status_code=413, detail="Fichier trop volumineux (15 Mo max).")
+        raise HTTPException(413, "Fichier trop volumineux (15 Mo maximum).")
+
+    company_id = user.get("company_id")
+
+    try:
+        count = import_known_buyers(db, io.BytesIO(contents), company_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))  
+    except Exception:
+        raise HTTPException(422, "Fichier illisible ou format inattendu.")
+
+    
+    if background_tasks is not None:
+        background_tasks.add_task(rematch_company_tenders, company_id)
+
+    return {"importes": count}
+
+
+@router.post("/import-scan")
+def import_buyers_scan(          # def → threadpool, event loop libre (AVAIL-001)
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user=Depends(require_admin_or_superadmin),
+):
+    contents = file.file.read()          # ← et non 'await file.read()'
+
+    if len(contents) > MAX_SCAN_SIZE:
+        raise HTTPException(413, "Fichier trop volumineux (15 Mo maximum).")
 
     real_type = _detect_real_type(contents)
     if real_type is None:
-        raise HTTPException(status_code=400, detail="Le contenu du fichier ne correspond à aucun format supporté (PDF/JPG/PNG).")
-    if real_type == "pdf" and not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="L'extension ne correspond pas au contenu réel du fichier.")
-    if real_type == "png" and not file.filename.lower().endswith(".png"):
-        raise HTTPException(status_code=400, detail="L'extension ne correspond pas au contenu réel du fichier.")
+        raise HTTPException(422, "Format non reconnu (PDF, JPG ou PNG attendu).")
 
+    company_id = user.get("company_id")
     try:
-        company_id = None if user.get("profil") == "superadmin" else int(user["company_id"])
-        result = import_buyers_from_scan(db, contents, file.filename, company_id=company_id)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Échec de l'analyse du document : {exc}")
+        result = import_buyers_from_scan(db, contents, file.filename, company_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
     return result
 

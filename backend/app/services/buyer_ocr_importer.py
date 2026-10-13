@@ -12,7 +12,6 @@ import io
 
 import fitz  # PyMuPDF
 import pytesseract
-from pdf2image import convert_from_bytes
 from PIL import Image
 
 from app.core.config import settings
@@ -20,12 +19,14 @@ from sqlalchemy.orm import Session
 from app.models.known_buyer import KnownBuyer
 from app.services.local_llm_client import call_local_llm_json
 from app.services.buyer_matcher import find_matching_buyer
-
+from pdf2image import convert_from_bytes, pdfinfo_from_bytes
 if settings.TESSERACT_CMD:
     pytesseract.pytesseract.tesseract_cmd = settings.TESSERACT_CMD
 
 OCR_LANG = "fra"
 CHUNK_SIZE = 3000  # cohérent avec la limite déjà appliquée à Qwen ailleurs (ai_detail_extractor.py)
+MAX_PAGES = 20        
+OCR_DPI = 150 
 
 SYSTEM_PROMPT = """Tu lis le texte brut issu d'un OCR (reconnaissance optique de caractères) sur une liste papier scannée de clients/acheteurs publics ou privés tunisiens.
 Le texte peut contenir des erreurs d'OCR, des lignes mal alignées ou du bruit — fais de ton mieux pour reconstituer les entrées malgré tout.
@@ -54,11 +55,30 @@ def _pdf_text_layer(pdf_bytes: bytes) -> str:
 
 
 def _pdf_ocr(pdf_bytes: bytes) -> str:
-    """PDF scanné (image) : convertit chaque page en image puis OCR."""
+    """PDF scanné : OCR page par page pour borner la mémoire (AVAIL-001)."""
     kwargs = {"poppler_path": settings.POPPLER_PATH} if settings.POPPLER_PATH else {}
-    images = convert_from_bytes(pdf_bytes, dpi=300, **kwargs)
-    return "\n".join(pytesseract.image_to_string(img, lang=OCR_LANG) for img in images)
 
+    info = pdfinfo_from_bytes(pdf_bytes, **kwargs)
+    nb_pages = int(info.get("Pages", 0) or 0)
+
+    if nb_pages > MAX_PAGES:
+        raise ValueError(
+            f"PDF trop volumineux : {nb_pages} pages (maximum {MAX_PAGES})."
+        )
+
+    parts = []
+    for page_num in range(1, nb_pages + 1):
+        images = convert_from_bytes(
+            pdf_bytes,
+            dpi=OCR_DPI,
+            first_page=page_num,
+            last_page=page_num,
+            **kwargs,
+        )
+        parts.append(pytesseract.image_to_string(images[0], lang=OCR_LANG))
+        del images              # libère la page avant la suivante
+
+    return "\n".join(parts)
 
 def _image_ocr(image_bytes: bytes) -> str:
     img = Image.open(io.BytesIO(image_bytes))

@@ -36,7 +36,8 @@ jobs:
       # Tests unitaires (sans base de données ni Redis)
       - name: Unit tests
         run: >
-          python -m pytest
+          cd backend
+          python -m pytest scripts/ -q
           scripts/test_universal_contract.py
           scripts/test_keyword_scorer.py
           scripts/test_pipeline_helpers.py

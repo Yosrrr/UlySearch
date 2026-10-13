@@ -416,29 +416,26 @@ def update_tender_feedback(
     tender_id: str,
     payload: TenderFeedbackUpdate,
     db: Session = Depends(get_db),
-     user: dict = Depends(get_current_user),
+    user: dict = Depends(get_current_user),
 ):
     if _is_superadmin(user):
-        raise HTTPException(status_code=403, detail="Le feedback est rÃ©servÃ© aux clients.")
+        raise HTTPException(
+            status_code=403,
+            detail="Le feedback est réservé aux clients.",
+        )
     if payload.feedback not in {"pertinent", "pas_pertinent"}:
         raise HTTPException(status_code=400, detail="Feedback invalide.")
 
     company_id = _require_company_id(user)
-    row = (
-        db.query(CompanyTender, Sotradies)
-        .join(Sotradies, Sotradies.id == CompanyTender.tender_id)
-        .filter(
-            CompanyTender.company_id == company_id,
-            CompanyTender.tender_id == tender_id,
-        )
-        .first()
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="MarchÃ© introuvable")
+    match = _get_match_scoped(db, user, company_id, tender_id)
 
-    match, tender = row
+    tender = db.query(Sotradies).filter_by(id=tender_id).first()
+    if tender is None:
+        raise HTTPException(status_code=404, detail="Marché introuvable")
+
     match.feedback = payload.feedback
     match.feedback_at = datetime.now(UTC).replace(tzinfo=None)
+
     db.add(AuditLog(
         sotradies_id=tender_id,
         utilisateur_email=user.get("sub", "inconnu"),
@@ -447,34 +444,31 @@ def update_tender_feedback(
     ))
     db.commit()
     db.refresh(match)
-    return to_tender_out_from_match(match, tender, _commercial_name(db, match.commercial_id))
+
+    return to_tender_out_from_match(
+        match, tender, _commercial_name(db, match.commercial_id)
+    )
 
 
 @router.get("/{tender_id}", response_model=TenderOut)
 def get_tender(
     tender_id: str,
     db: Session = Depends(get_db),
-     user: dict = Depends(get_current_user),
+    user: dict = Depends(get_current_user),
 ):
     if _is_superadmin(user):
         t = db.query(Sotradies).filter_by(id=tender_id).first()
         if not t:
-            raise HTTPException(status_code=404, detail="MarchÃ© introuvable")
+            raise HTTPException(status_code=404, detail="Marché introuvable")
         result = to_tender_out_from_sotradies(t)
     else:
         company_id = _require_company_id(user)
-        row = (
-            db.query(CompanyTender, Sotradies)
-            .join(Sotradies, Sotradies.id == CompanyTender.tender_id)
-            .filter(
-                CompanyTender.company_id == company_id,
-                CompanyTender.tender_id == tender_id,
-            )
-            .first()
-        )
-        if not row:
-            raise HTTPException(status_code=404, detail="MarchÃ© introuvable")
-        match, tender = row
+        match = _get_match_scoped(db, user, company_id, tender_id)
+
+        tender = db.query(Sotradies).filter_by(id=tender_id).first()
+        if tender is None:
+            raise HTTPException(status_code=404, detail="Marché introuvable")
+
         result = to_tender_out_from_match(
             match, tender, _commercial_name(db, match.commercial_id)
         )
@@ -488,6 +482,35 @@ def get_tender(
     db.commit()
     return result
 
+def _get_match_scoped(
+    db: Session,
+    user: dict,
+    company_id: int,
+    tender_id: str,
+) -> CompanyTender:
+    query = (
+        db.query(CompanyTender)
+        .filter_by(company_id=company_id, tender_id=tender_id)
+    )
+
+    if user.get("profil") == "commercial":
+        moi = (
+            db.query(Commercial)
+            .filter(
+                Commercial.company_id == company_id,
+                Commercial.email == user.get("sub"),
+                Commercial.actif.is_(True),
+            )
+            .one_or_none()
+        )
+        if moi is None:
+            raise HTTPException(status_code=404, detail="Marché introuvable")
+        query = query.filter(CompanyTender.commercial_id == moi.id)
+
+    match = query.first()
+    if match is None:
+        raise HTTPException(status_code=404, detail="Marché introuvable")
+    return match
 
 @router.patch("/{tender_id}", response_model=TenderOut)
 def update_tender_status(
@@ -496,21 +519,30 @@ def update_tender_status(
     db: Session = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
+    """
+    - superadmin        : modifie Sotradies.statut (vue brute plateforme)
+    - client "retenu"   : REPÊCHAGE → CompanyTender.decision + feedback
+    - client autre      : cycle commercial (CLIENT_STATUTS)
+    """
     now = datetime.now(UTC).replace(tzinfo=None)
+    email = user.get("sub", "inconnu")
 
-    # Superadmin : vue brute Sotradies (comportement inchangÃ©)
+    # ── Superadmin : table globale ───────────────────────────────
     if _is_superadmin(user):
         if payload.statut not in SUPERADMIN_STATUTS:
             raise HTTPException(status_code=400, detail="Statut invalide.")
+
         t = db.query(Sotradies).filter_by(id=tender_id).first()
         if not t:
-            raise HTTPException(status_code=404, detail="MarchÃ© introuvable")
+            raise HTTPException(status_code=404, detail="Marché introuvable")
+
         ancien = t.statut
         t.statut = payload.statut
         t.date_derniere_action = now
+
         db.add(AuditLog(
             sotradies_id=t.id,
-            utilisateur_email=user.get("sub", "inconnu"),
+            utilisateur_email=email,
             action="changement_statut",
             detail=f"{ancien} -> {payload.statut}",
         ))
@@ -518,35 +550,41 @@ def update_tender_status(
         db.refresh(t)
         return to_tender_out_from_sotradies(t)
 
-    # Client
+    # ── Client : CompanyTender, isolation complète ───────────────
     company_id = _require_company_id(user)
-    match = (
-        db.query(CompanyTender)
-        .filter_by(company_id=company_id, tender_id=tender_id)
-        .first()
-    )
-    if not match:
-        raise HTTPException(status_code=404, detail="MarchÃ© introuvable")
+    match = _get_match_scoped(db, user, company_id, tender_id)
 
     if payload.statut == "retenu":
-        # RepÃªchage = dÃ©cision humaine : change la DÃ‰CISION.
-        # feedback="pertinent" protÃ¨ge l'offre contre les recalculs automatiques.
+        # Repêchage : change la DÉCISION moteur, pas le cycle commercial.
+        # feedback="pertinent" protège l'offre des recalculs automatiques.
         ancien = match.decision
         match.decision = "retenu"
         match.feedback = "pertinent"
         match.feedback_at = now
-        if match.statut in (None, "sans_suite"):
-            match.statut = "nouveau"  # reprend le cycle commercial
+
+        if match.statut in (None, "", "sans_suite", "perdu"):
+            match.statut = "nouveau"
+
         details = dict(match.score_details or {})
-        details["_repechage"] = {"date": now.isoformat(timespec="seconds"),
-                                 "par": user.get("sub"), "ancienne_decision": ancien}
+        details["_repechage"] = {
+            "date": now.isoformat(timespec="seconds"),
+            "par": email,
+            "ancienne_decision": ancien,
+        }
         match.score_details = details
-        action, detail = "repechage", f"{ancien} -> retenu"
+
+        action = "repechage"
+        detail = f"{ancien} -> retenu"
+
     else:
         if payload.statut not in CLIENT_STATUTS:
-            raise HTTPException(400, detail="Statut invalide.")
+            raise HTTPException(status_code=400, detail="Statut invalide.")
+
+        ancien = match.statut          # TECH-001 : assignation obligatoire
         match.statut = payload.statut
-        action, detail = "changement_statut", f"{ancien} -> {payload.statut}"
+
+        action = "changement_statut"
+        detail = f"{ancien} -> {payload.statut}"
 
     tender = db.query(Sotradies).filter_by(id=tender_id).first()
     if tender:
@@ -554,10 +592,13 @@ def update_tender_status(
 
     db.add(AuditLog(
         sotradies_id=tender_id,
-        utilisateur_email=user.get("sub", "inconnu"),
+        utilisateur_email=email,
         action=action,
         detail=detail,
     ))
     db.commit()
     db.refresh(match)
-    return to_tender_out_from_match(match, tender, _commercial_name(db, match.commercial_id))
+
+    return to_tender_out_from_match(
+        match, tender, _commercial_name(db, match.commercial_id)
+    )

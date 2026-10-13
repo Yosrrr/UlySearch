@@ -216,14 +216,17 @@ def propose_source(
             type="universel",
             url=normalized,
             actif=activate,
-            use_browser=use_browser,
+            # SEC-001 : navigateur headless réservé à la plateforme
+            use_browser=use_browser if platform_admin else False,
             max_pages=max_pages,
         )
         db.add(existing)
         db.flush()
-    elif activate and not existing.actif:
-        existing.actif = True
+
+
+    # (bloc 'elif activate and not existing.actif' supprimé volontairement)
 
     if company_id is not None:
         subscribe_source(db, company_id, existing)
+
     return existing

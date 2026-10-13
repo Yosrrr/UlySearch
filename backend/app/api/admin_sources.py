@@ -223,6 +223,7 @@ def create_source(
         raise HTTPException(422, "Cochez site privé pour transmettre un compte.")
 
     try:
+        is_platform = company_id is None   # superadmin sans X-Company-ID
         source = propose_source(
             db,
             company_id=company_id,
@@ -230,8 +231,8 @@ def create_source(
             url=payload.url,
             use_browser=payload.use_browser,
             max_pages=payload.max_pages,
-            platform_admin=user.get("profil") == "superadmin",
-            activate=True,
+            platform_admin=is_platform,
+            activate=bool(is_platform and getattr(payload, "actif", True)),
         )
 
         # Les notes privées ne sont pas enregistrées dans

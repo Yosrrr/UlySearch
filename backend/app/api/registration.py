@@ -444,7 +444,7 @@ def register_client(
                 nom=site["nom"],
                 url=site["url"],
                 # True = le client active son site dès l'inscription
-                activate=True,
+                activate=False,
             )
             # credentials privés si besoin...
             selected_sources[source.id] = source

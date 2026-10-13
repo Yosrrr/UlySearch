@@ -18,6 +18,12 @@ def import_known_buyers(
     df = df.dropna(subset=["nom_acheteur"])
     df = df[~df["nom_acheteur"].astype(str).str.startswith("[EXEMPLE]")]
 
+    # TECH-004 : un fichier vide ne doit pas effacer la liste existante
+    if df.empty:
+        raise ValueError(
+            "Fichier vide : aucun acheteur importé, la liste existante est conservée."
+        )
+
     query = db.query(KnownBuyer)
     if company_id is None:
         query = query.filter(KnownBuyer.company_id.is_(None))
