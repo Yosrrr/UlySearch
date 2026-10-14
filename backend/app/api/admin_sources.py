@@ -31,6 +31,7 @@ from app.services.source_catalog_service import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/sources", tags=["admin-sources"])
+MAX_SOURCES_PAR_TENANT = 15   
 
 
 class SourceCreate(BaseModel):
@@ -212,9 +213,26 @@ def create_source(
     user=Depends(require_admin_or_superadmin),
 ):
     company_id = _company_id(user)
+    if company_id is not None:
+        nb_actives = (
+            db.query(CompanySource)
+            .filter(
+                CompanySource.company_id == company_id,
+                CompanySource.actif.is_(True),
+            )
+            .count()
+        )
+        if nb_actives >= MAX_SOURCES_PAR_TENANT:
+            raise HTTPException(
+                422,
+                f"Limite atteinte : {MAX_SOURCES_PAR_TENANT} sources actives "
+                "maximum. Désactivez une source existante ou contactez "
+                "le support.",
+            )
 
     if payload.type not in ("universel", "dedie"):
         raise HTTPException(422, "Type de source invalide.")
+
     if payload.prive and (not payload.login or not payload.mot_de_passe):
         raise HTTPException(422, "Le login et le mot de passe sont obligatoires pour un site privé.")
     if payload.prive and company_id is None:

@@ -6,7 +6,7 @@ from app.core.config import settings
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 from sqlalchemy import func
-from sqlalchemy.exc import IntegrityError
+
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -16,8 +16,6 @@ from app.models.company import Company
 from app.models.commercial import Commercial
 from app.models.configuration import Configuration
 from app.models.user import User
-from app.models.company_source import CompanySource
-from app.models.source_account import SourceAccount
 from app.services.source_catalog_service import (
     get_public_source,
     list_public_catalog,
@@ -25,7 +23,7 @@ from app.services.source_catalog_service import (
     propose_source,
     subscribe_source,
 )
-from app.services.source_credentials import encrypt_source_password
+
 
 
 router = APIRouter(prefix="/register", tags=["registration"])
@@ -375,20 +373,20 @@ def register_client(
     ) or None
 
     try:
-        if (
-            db.query(User)
-            .filter(func.lower(User.email) == email)
-            .first()
-        ):
-            raise HTTPException(409, "Cet email possède déjà un compte.")
+        if db.query(User).filter(func.lower(User.email) == email).first():
+            raise HTTPException(
+                409,
+                "Impossible de créer le compte avec ces informations. "
+                "Si vous avez déjà un compte, utilisez la page de connexion.",
+            )
 
         fiscal_id = company_data.get("matricule_fiscal")
-        if fiscal_id and (
-            db.query(Company)
-            .filter_by(matricule_fiscal=fiscal_id)
-            .first()
-        ):
-            raise HTTPException(409, "Matricule fiscal déjà enregistré.")
+        if fiscal_id and db.query(Company).filter_by(matricule_fiscal=fiscal_id).first():
+            raise HTTPException(
+                409,
+                "Impossible de créer le compte avec ces informations. "
+                "Contactez le support si le problème persiste.",
+            )
 
         # 1. Entreprise.
         company = Company(

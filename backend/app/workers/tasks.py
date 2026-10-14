@@ -3,11 +3,9 @@
 import random
 import redis as _redis
 from app.core.config import settings
-from datetime import UTC, datetime
-# Import explicite : permet d'enregistrer tasks.run_cleanup dans Celery.
-# Celery autodiscover charge app.workers.tasks, pas automatiquement
-# cleanup_tasks.py.
-from app.workers import cleanup_tasks  # noqa: F401
+from datetime import UTC
+
+import uuid 
 from app.services.reporting import send_periodic_report 
 # à adapter au vrai nom
 from app.core.celery_app import celery_app
@@ -19,14 +17,26 @@ from app.services.notifier import (
 from app.services.pipeline import run_pipeline
 _lock_client = _redis.Redis.from_url(settings.REDIS_URL)
 
-
-def _acquire_lock(name: str, timeout: int = 1800) -> bool:
-    """Retourne True si le verrou est acquis (pas d'autre run en cours)."""
-    return bool(_lock_client.set(f"lock:{name}", "1", nx=True, ex=timeout))
-
-
-def _release_lock(name: str) -> None:
-    _lock_client.delete(f"lock:{name}")
+_RELEASE_SCRIPT = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+else
+    return 0
+end
+"""
+def _acquire_lock(name: str, timeout: int = 1800) -> str | None:
+    """Retourne un token si le verrou est obtenu, None sinon."""
+    token = uuid.uuid4().hex
+    ok = _lock_client.set(f"lock:{name}", token, nx=True, ex=timeout)
+    return token if ok else None
+def _release_lock(name: str, token: str) -> None:
+    """Ne libère que si on est encore le propriétaire (TECH-010)."""
+    if not token:
+        return
+    try:
+        _lock_client.eval(_RELEASE_SCRIPT, 1, f"lock:{name}", token)
+    except Exception:
+        pass
 
 @celery_app.task(name="tasks.kickoff_daily_scan")
 def kickoff_daily_scan():
@@ -37,16 +47,14 @@ def kickoff_daily_scan():
 
 @celery_app.task(name="tasks.run_daily_scan", soft_time_limit=1500, time_limit=1800)
 def run_daily_scan():
-    """Scraping + scoring, puis alertes instantanées."""
-    if not _acquire_lock("daily_scan"):
-        print("[tasks] Scan déjà en cours, skip")
-        return {"skipped": True}
+    token = _acquire_lock("daily_scan")
+    if token is None:
+        print("[tasks] scan déjà en cours — abandon")
+        return {"status": "skipped"}
     try:
-        summary = run_pipeline()
-        dispatch_new_tenders()
-        return summary
+        return run_pipeline()
     finally:
-        _release_lock("daily_scan")
+        _release_lock("daily_scan", token)
 
 @celery_app.task(name="tasks.send_digest")
 def send_digest():

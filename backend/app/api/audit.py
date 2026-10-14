@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query, Response
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.audit_log import AuditLog

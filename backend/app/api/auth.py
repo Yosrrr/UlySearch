@@ -1,6 +1,6 @@
 from sqlalchemy import func
 import time
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException, Request, Response

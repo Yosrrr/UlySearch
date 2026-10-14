@@ -3,6 +3,7 @@ Gestion des comptes utilisateurs (création, modification, suppression,
 activation/désactivation). Réservé exclusivement au profil "superadmin".
 """
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.models.company import Company
 from app.core.database import get_db
@@ -40,8 +41,8 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db), admin=Depend
         if company is None:
             raise HTTPException(status_code=404, detail="Entreprise introuvable.")
 
-    if db.query(User).filter_by(email=payload.email).first():
-        raise HTTPException(status_code=409, detail="Email déjà utilisé.")
+    if db.query(User).filter(func.lower(User.email) == payload.email.lower()).first():
+        raise HTTPException(409, "Email déjà utilisé.")
 
     user = User(
         email=payload.email,
@@ -76,6 +77,7 @@ def update_user(user_id: int, payload: UserUpdate, db: Session = Depends(get_db)
         user.profil = payload.profil
     if payload.password:
         user.password_hash = hash_password(payload.password)
+        user.token_version = (user.token_version or 0) + 1
     if payload.actif is not None:
         user.actif = payload.actif
 

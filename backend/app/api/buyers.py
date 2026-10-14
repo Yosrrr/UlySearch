@@ -12,7 +12,7 @@ from app.api.deps import get_current_user, require_admin_or_superadmin
 
 
 router = APIRouter(prefix="/buyers", tags=["buyers"])
-MAX_SCAN_SIZE = 15 * 1024 * 1024  # 15 Mo
+MAX_SCAN_SIZE = 15 * 1024 * 1024  
 MAGIC_BYTES = {b"%PDF": "pdf", b"\xff\xd8\xff": "jpg", b"\x89PNG\r\n\x1a\n": "png"}
 
 

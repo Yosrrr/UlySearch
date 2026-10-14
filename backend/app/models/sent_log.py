@@ -1,20 +1,21 @@
-"""Empêche qu'un même marché soit envoyé deux fois par email (Layer 8).
 
-⚠️ Deux modes de traçabilité coexistent pendant la transition :
-   - sotradies_id  : ancien mode mono-client (conservé pour compatibilité).
-   - company_tender_id : nouveau mode multi-tenant, à utiliser
-     désormais pour tous les nouveaux envois.
-"""
 
 from app.core.time_utils import now_naive
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
-
 from app.core.database import Base
-
-
+from sqlalchemy import (
+    Column, DateTime, ForeignKey, Index, Integer, String, text,
+)
 class SentLog(Base):
     __tablename__ = "sent_log"
+    __table_args__ = (
+        Index(
+            "uq_sent_log_company_tender_canal",
+            "company_tender_id", "canal",
+            unique=True,
+            postgresql_where=text("company_tender_id IS NOT NULL"),
+        ),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 

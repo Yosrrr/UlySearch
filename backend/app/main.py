@@ -289,7 +289,42 @@ def health():
 
     code = 200 if checks["status"] == "ok" else 503
     return JSONResponse(content=checks, status_code=code)
+@app.get("/health", tags=["health"])
+def health_live():
+    """Liveness : le process répond. Jamais 503 sur dépendance externe."""
+    return {"status": "ok", "app": settings.APP_NAME}
 
+
+@app.get("/ready", tags=["health"])
+def health_ready():
+    """Readiness : vérifie DB et Redis. Pour le monitoring, pas le load balancer."""
+    checks = {"status": "ok", "env": settings.ENV}
+
+    try:
+        from app.core.database import SessionLocal
+        db = SessionLocal()
+        try:
+            db.execute(text("SELECT 1"))
+        finally:
+            db.close()
+        checks["database"] = "ok"
+    except Exception as exc:
+        checks["database"] = f"error:{type(exc).__name__}"
+        checks["status"] = "degraded"
+
+    try:
+        import redis as _redis
+        r = _redis.Redis.from_url(
+            settings.REDIS_URL, socket_connect_timeout=1, socket_timeout=1
+        )
+        r.ping()
+        checks["redis"] = "ok"
+    except Exception as exc:
+        checks["redis"] = f"error:{type(exc).__name__}"
+        checks["status"] = "degraded"
+
+    code = 200 if checks["status"] == "ok" else 503
+    return JSONResponse(content=checks, status_code=code)
 
 # ---------------------------------------------------------------------------
 # Frontend Vite en production

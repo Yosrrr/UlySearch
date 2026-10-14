@@ -19,8 +19,7 @@ def score_with_ai(
     all_brands: list[str] = []
     for cat_data in (dynamic_categories or {}).values():
         all_brands.extend(cat_data.get("marques", []) or [])
-    brands_unique = sorted(set(all_brands))
-    brands_str = f" (marques {', '.join(brands_unique)})" if brands_unique else ""
+    
 
     if not category_names:
         print("[ai_scorer] Aucune catégorie configurée — impossible de scorer via IA.")
@@ -31,7 +30,7 @@ def score_with_ai(
             "raison": "Aucune catégorie configurée en administration",
         }
 
-    categories_list = ", ".join(category_names)
+    
 
     categories_context = {
         category_id: {

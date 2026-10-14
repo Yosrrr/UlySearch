@@ -208,7 +208,7 @@ def filter_today_only(
     """
     kept: list[SotradiesRaw] = []
     sans_date = 0
-    now = datetime.now()
+  
 
     for t in tenders:
         pub = getattr(t, "date_publication", None)
@@ -371,7 +371,7 @@ def _already_enriched(db, tender_id: str) -> bool:
 
 def _score_for_all_companies(db, tender: Sotradies, source_name: str, run_id: str) -> dict:
     summary = {"any_retained": False, "scored": 0}
-    ai_cache = {}
+   
 
     normalized = source_name.lower()
     if normalized.startswith("web_"):

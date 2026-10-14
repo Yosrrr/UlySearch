@@ -1,11 +1,10 @@
 """Trace chaque action effectuée sur une fiche marché, par qui et quand,
 ainsi que les connexions au système."""
 
-
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
-from app.core.time_utils import now_naive
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 
 from app.core.database import Base
+from app.core.time_utils import now_naive
 
 
 class AuditLog(Base):
