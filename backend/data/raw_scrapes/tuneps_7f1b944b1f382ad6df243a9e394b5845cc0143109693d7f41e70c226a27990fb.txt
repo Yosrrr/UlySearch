@@ -1,0 +1,10 @@
+SOURCE: tuneps
+REFERENCE: 20260902152
+OBJET: AO 66-2026 Confier à un bureau d’études ou à un groupement de bureaux d’études, les prestations de services relatives à l’étude du plan directeur des réseaux de répartition du Sahel Sud jusqu’à l’échéance 2050.
+ACHETEUR: Société Nationale d’Exploitation et de Distribution des Eaux
+CATEGORIE_SITE: 
+DATE_PUBLICATION: 2026-09-29 08:56:44.752610
+DATE_LIMITE: 2026-11-06 09:00:00
+LIEN: https://www.tuneps.tn/portail/detail-offre?id=136149
+---
+

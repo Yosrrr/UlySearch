@@ -1,0 +1,10 @@
+SOURCE: tuneps
+REFERENCE: 20261001631
+OBJET: Installation d’un groupe électrogène au service samu 04
+ACHETEUR: Hôpital Habib Bourguiba Sfax
+CATEGORIE_SITE: 
+DATE_PUBLICATION: 2026-10-17 09:04:59.381238
+DATE_LIMITE: 2026-11-17 13:00:00
+LIEN: https://www.tuneps.tn/portail/detail-offre?id=137893
+---
+

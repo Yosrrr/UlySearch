@@ -173,6 +173,18 @@ def _filtered_for_superadmin(
     limit: int | None = None,
     offset: int = 0,
 ) -> tuple[list[TenderOut], int]:
+    """
+    Retourne (page, total_apres_filtres) pour le superadmin.
+
+    Stratégie :
+    - Filtres SQL : search, commercial, statut (colonnes indexées)
+    - Tri SQL    : date_detection DESC
+    - Fetch ALL  : nécessaire car score est calculé en Python
+    - Filtres Python : score_min, include_rejected, categorie fine
+    - Pagination Python : une seule fois, après tous les filtres
+    - total = len(liste filtrée) avant pagination
+    """
+    # ── 1. Filtres SQL (colonnes indexées) ──────────────────────────
     query = db.query(Sotradies)
 
     if search:
@@ -187,33 +199,30 @@ def _filtered_for_superadmin(
     if categorie and categorie != "Toutes":
         query = query.filter(Sotradies.categorie == categorie)
 
-    total = query.count()
-
+    # ── 2. Tri SQL avant récupération ───────────────────────────────
     query = query.order_by(Sotradies.date_detection.desc())
-    if offset and offset > 0:
-        query = query.offset(offset)
-    if limit is not None:
-        query = query.limit(limit)
 
-    results = query.order_by(Sotradies.date_detection.desc()).all()
+    # ── 3. Récupération SANS pagination SQL ─────────────────────────
+    # Pas de .limit()/.offset() ici : le score est calculé en Python,
+    # on ne peut pas paginer en SQL avant de filtrer sur le score.
+    results = query.all()
     out = [to_tender_out_from_sotradies(t) for t in results]
 
+    # ── 4. Filtres Python (champs calculés) ─────────────────────────
     if score_min is not None:
         out = [t for t in out if t.score >= score_min]
     elif not include_rejected:
         out = [t for t in out if t.score > 0 or t.statut == "retenu"]
 
-    if categorie and categorie != "Toutes":
-        out = [t for t in out if (t.top_categorie or "") == categorie]
+    # ── 5. Total réel après TOUS les filtres ────────────────────────
+    total = len(out)
 
-    total = len(out)                      # total APRÈS filtres → cohérent
-
-    if offset < 0:
-        offset = 0
+    # ── 6. Pagination Python — UNE SEULE FOIS ───────────────────────
+    start = max(offset, 0)
     if limit is not None:
-        out = out[offset : offset + limit]
-    elif offset:
-        out = out[offset:]
+        out = out[start : start + limit]
+    elif start > 0:
+        out = out[start:]
 
     return out, total
 

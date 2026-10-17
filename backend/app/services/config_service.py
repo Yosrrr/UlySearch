@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 # Force l'enregistrement de tous les modèles et de leurs relations
 # avant toute requête ORM, quel que soit le point d'entrée
 # (script, test, pipeline, tâche Celery, API).
-import app.models  # noqa: F401
 
 from app.models.configuration import Configuration
 

@@ -74,10 +74,12 @@ services:
       # Pas de scan immédiat à l'inscription (F-012)
       - key: RUN_PIPELINE_ON_REGISTER
         value: "false"
-
-      # TUNEPS : pas de vérification TLS côté cloud, aucun identifiant envoyé (F-021)
       - key: TUNEPS_SSL_VERIFY
-        value: "false"
+        value: "true"
+      - key: TUNEPS_CA_BUNDLE
+        value: "/app/backend/app/certs/tuneps_chain.pem"
+
+     
 
       # Admin initial
       - key: INITIAL_ADMIN_EMAIL
@@ -161,8 +163,13 @@ services:
 
       - key: LLM_ENABLED
         value: "false"
+
+      # Configuration TUNEPS
       - key: TUNEPS_SSL_VERIFY
-        value: "false"
+        value: "true"
+      - key: TUNEPS_CA_BUNDLE
+        value: "/app/backend/app/certs/tuneps_chain.pem"
+    
 
       - key: SMTP_HOST
         fromService:
@@ -252,7 +259,9 @@ services:
       - key: LLM_ENABLED
         value: "false"
       - key: TUNEPS_SSL_VERIFY
-        value: "false"
+        value: "true"
+      - key: TUNEPS_CA_BUNDLE
+        value: "/app/backend/app/certs/tuneps_chain.pem"
 
       - key: SMTP_HOST
         fromService:

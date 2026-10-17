@@ -1,0 +1,10 @@
+SOURCE: tuneps
+REFERENCE: 20260901795
+OBJET: Acquisition de matériels de servitude Roulants : Chariots élévateurs électrique et Gerbeurs
+ACHETEUR: TUNISAIR
+CATEGORIE_SITE: 
+DATE_PUBLICATION: 2026-09-21 10:09:13.453290
+DATE_LIMITE: 2026-10-23 09:00:00
+LIEN: https://www.tuneps.tn/portail/detail-offre?id=135663
+---
+

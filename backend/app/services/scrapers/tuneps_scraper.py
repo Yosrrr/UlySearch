@@ -42,17 +42,17 @@ MAX_PAGES = 5          # garde-fou : 500 avis max par exécution
 LOOKBACK_DAYS = 3      # arrêt dès que les avis dépassent cette ancienneté
 REQUEST_TIMEOUT = 30   # secondes
 
-
 def _tls_verify():
-    """
-    False : TLS non vérifié (défaut, lecture publique).
-    True  : vérification avec le magasin certifi.
-    str   : chemin d'un fichier PEM (TUNEPS_CA_BUNDLE) contenant la chaîne complète.
-    Lu à CHAQUE requête : le réglage peut changer sans redémarrer.
-    """
+    """... (docstring existant) ..."""
     if os.getenv("TUNEPS_SSL_VERIFY", "false").strip().lower() not in ("1", "true", "yes"):
         return False
     bundle = os.getenv("TUNEPS_CA_BUNDLE", "").strip()
+    if bundle and not os.path.isfile(bundle):
+        # Erreur de CONFIG, pas de réseau : message explicite, échec immédiat
+        raise FileNotFoundError(
+            f"TUNEPS_CA_BUNDLE pointe vers un fichier inexistant : {bundle}. "
+            "Vérifiez le chemin dans render.yaml / .env."
+        )
     return bundle if bundle else True
 
 

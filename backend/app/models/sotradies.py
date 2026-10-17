@@ -22,7 +22,6 @@ class Sotradies(Base):
     date_detection = Column(
         DateTime, default=now_naive, nullable=False, index=True
     )
-    raw_data = Column(JSONB, nullable=True)
 
     statut = Column(String(30), default="nouveau", nullable=False)
     commercial_assigne = Column(String(255), nullable=True)

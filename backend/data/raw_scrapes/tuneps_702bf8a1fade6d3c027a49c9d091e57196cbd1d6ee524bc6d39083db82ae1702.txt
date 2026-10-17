@@ -1,0 +1,10 @@
+SOURCE: tuneps
+REFERENCE: 20261000666
+OBJET: GFI2610068 Fourniture de trois lots de pièces de rechange pour les compresseurs d'air INGERSOLL RAND pour les usines du GCT à Gabès
+ACHETEUR: Groupe Chimique Tunisien
+CATEGORIE_SITE: 
+DATE_PUBLICATION: 2026-10-06 10:56:46.977265
+DATE_LIMITE: 2026-11-24 08:30:00
+LIEN: https://www.tuneps.tn/portail/detail-offre?id=137114
+---
+

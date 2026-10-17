@@ -1,0 +1,10 @@
+SOURCE: tuneps
+REFERENCE: 20260303014
+OBJET: APPEL D’OFFRES OUVERT N° 16 ANNEE 2026 conception, la réalisation clé en main (EPC) et l’exploitation pendant six (06) mois de deux (02) stations de dessalement des eaux saumâtres par Osmose Inverse, d’une capacité totale 4 000 m3/j dans les Gouvernorats de Kébili et Tozeur dans le cadre de la 2ème phase du programme national d’amélioration de la qualité dans le sud tunisien (PNAQ II).
+ACHETEUR: Société Nationale d’Exploitation et de Distribution des Eaux
+CATEGORIE_SITE: 
+DATE_PUBLICATION: 2026-09-27 21:08:48.711856
+DATE_LIMITE: 2026-09-30 11:00:00
+LIEN: https://www.tuneps.tn/portail/detail-offre?id=136079
+---
+

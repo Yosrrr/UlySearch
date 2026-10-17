@@ -18,12 +18,11 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: backend/requirements-dev.txt
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
 
-      # F-001 : l'application doit démarrer depuis les dépendances déclarées
       - name: Import check
         run: python -c "import app.main; print('Import OK')"
         env:
@@ -35,20 +34,9 @@ jobs:
 
       # Tests unitaires (sans base de données ni Redis)
       - name: Unit tests
-        run: >
-          cd backend
-          python -m pytest scripts/ -q
-          scripts/test_universal_contract.py
-          scripts/test_keyword_scorer.py
-          scripts/test_pipeline_helpers.py
-          scripts/test_pipeline_logger.py
-          scripts/test_export_security.py
-          scripts/test_config_guards.py
-          scripts/test_auth_deps.py
-          scripts/test_dedup_feedback.py
-          scripts/test_scoring_guards.py
-          scripts/test_undp_dates.py
-          -v
+        run: python -m pytest scripts/ -q
+        env: 
+          ENV: development
 
   frontend:
     runs-on: ubuntu-latest
@@ -75,3 +63,32 @@ jobs:
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ulysearch
+          POSTGRES_PASSWORD: ulysearch
+          POSTGRES_DB: ulysearch_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ulysearch"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        working-directory: backend
+        run: pip install -r requirements-dev.txt
+      - name: Migration up/down/up roundtrip (OPS-001)
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+psycopg://ulysearch:ulysearch@localhost:5432/ulysearch_ci
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head

@@ -1,0 +1,10 @@
+SOURCE: tuneps
+REFERENCE: 20261000777
+OBJET: acquisition d'une camionnette 4*4
+ACHETEUR: Fondation Nationale d’Amélioration de la Race Chevaline
+CATEGORIE_SITE: 
+DATE_PUBLICATION: 2026-10-07 11:56:03.721730
+DATE_LIMITE: 2026-11-05 10:00:00
+LIEN: https://www.tuneps.tn/portail/detail-offre?id=137228
+---
+

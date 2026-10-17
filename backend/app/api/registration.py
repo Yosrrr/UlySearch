@@ -23,7 +23,8 @@ from app.services.source_catalog_service import (
     propose_source,
     subscribe_source,
 )
-
+import logging
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/register", tags=["registration"])
@@ -501,7 +502,7 @@ def register_client(
         raise
     except Exception as exc:
         db.rollback()
-        print(f"[register] Erreur inscription : {type(exc).__name__}: {exc}")
+        logger.error("[register] Erreur inscription : %s", type(exc).__name__)
         raise HTTPException(
             status_code=500,
             detail="Erreur lors de la création du compte.",
@@ -519,7 +520,7 @@ def register_client(
                 f"[register] Pipeline planifié company_id={result.company_id}"
             )
         except Exception as exc:
-            print(f"[register] Pipeline non lancé: {exc}")
+            logger.warning("[register] Pipeline non lancé : %s", type(exc).__name__)
     else:
         print(
             f"[register] Pipeline différé "

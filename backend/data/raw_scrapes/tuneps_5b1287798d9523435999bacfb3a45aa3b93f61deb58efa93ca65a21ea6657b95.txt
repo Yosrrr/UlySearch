@@ -1,0 +1,10 @@
+SOURCE: tuneps
+REFERENCE: 20260901788
+OBJET: AO 76-2026 Achévement des travaux de génie civil prévus dans le cadre du projet d’alimentation en eau potable de la localité rurale Ain Aouija dans la délégation de Jendouba Sud (Gouvernorat de Jendouba) .
+ACHETEUR: Société Nationale d’Exploitation et de Distribution des Eaux
+CATEGORIE_SITE: 
+DATE_PUBLICATION: 2026-09-21 09:37:55.525998
+DATE_LIMITE: 2026-10-26 09:00:00
+LIEN: https://www.tuneps.tn/portail/detail-offre?id=135659
+---
+

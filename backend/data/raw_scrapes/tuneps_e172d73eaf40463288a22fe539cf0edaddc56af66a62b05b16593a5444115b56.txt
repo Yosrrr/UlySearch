@@ -1,0 +1,10 @@
+SOURCE: tuneps
+REFERENCE: 20261000750
+OBJET: Marché de location de camion pour le nettoiement de la ville de Sousse
+ACHETEUR: Commune de Sousse
+CATEGORIE_SITE: 
+DATE_PUBLICATION: 2026-10-06 15:44:58.024547
+DATE_LIMITE: 2026-10-22 14:00:00
+LIEN: https://www.tuneps.tn/portail/detail-offre?id=137190
+---
+

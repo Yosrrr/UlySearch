@@ -183,7 +183,7 @@ def _normalize(value: str | None) -> str:
     return " ".join(unidecode(str(value)).lower().strip().split())
 
 
-def compute_hash(tender: SotradiesRaw, fallback_source: str | None = None) -> str:
+def compute_hash(tender: SotradiesRaw) -> str:
     parts = [
         _normalize(tender.reference),
         _normalize(tender.objet),
@@ -623,7 +623,7 @@ def run_pipeline(
             # ── Traitement de chaque marché ──
             for tender in tenders:
                 effective_source = tender.source or source_name
-                tender_id = compute_hash(tender, fallback_source=source_name)
+                tender_id = compute_hash(tender)
 
                 # Déduplication intra-run
                 if tender_id in seen_this_run:

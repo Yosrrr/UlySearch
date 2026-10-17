@@ -1,4 +1,4 @@
-﻿"""
+"""
 Scraper universel sécurisé — extraction en deux étapes.
 
 1. Python extrait le texte et le catalogue des liens RÉELS de la page

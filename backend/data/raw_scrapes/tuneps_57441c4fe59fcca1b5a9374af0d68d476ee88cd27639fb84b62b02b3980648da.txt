@@ -1,0 +1,10 @@
+SOURCE: tuneps
+REFERENCE: 20261001574
+OBJET: AO 133/2026 pour la Fourniture, essais, transport, pose, raccordement et mise en bon état de marche des câbles moyenne tension et fourniture des transformateurs de puissance 5 MVA - 30 KV/5.5KV pour SP1, SP1' Ghedir Elgolla .
+ACHETEUR: Société Nationale d’Exploitation et de Distribution des Eaux
+CATEGORIE_SITE: 
+DATE_PUBLICATION: 2026-10-16 10:01:53.322943
+DATE_LIMITE: 2026-11-18 09:00:00
+LIEN: https://www.tuneps.tn/portail/detail-offre?id=137819
+---
+

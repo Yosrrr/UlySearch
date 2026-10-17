@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     AI_INTERNATIONAL_SOURCE_IDS: list[int] = Field(default_factory=list)
 
 
+    TUNEPS_CLIENT_CERT: str = ""   # chemin .pem/.crt exporté de la clé USB
+    TUNEPS_CLIENT_KEY: str = ""    # chemin de la clé privée associé
     
     OLLAMA_HOST: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "qwen3.5:9b"
@@ -58,16 +60,19 @@ class Settings(BaseSettings):
 
     RELEVANCE_INSTANT_ALERT_THRESHOLD: int = 70
     RELEVANCE_RETAIN_THRESHOLD: int = 50
-
+    
+    # ✅ FIX Pydantic v2 : @classmethod + (cls, v) obligatoires
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
-    def use_psycopg_driver(cls, value: str) -> str:
-        """Render fournit une URL PostgreSQL générique; l'application utilise psycopg 3."""
-        if value.startswith("postgres://"):
-            return value.replace("postgres://", "postgresql+psycopg://", 1)
-        if value.startswith("postgresql://"):
-            return value.replace("postgresql://", "postgresql+psycopg://", 1)
-        return value
+    def use_psycopg_driver(cls, v: str) -> str:
+        """Normalise l'URL PostgreSQL pour le driver psycopg v3."""
+        if not isinstance(v, str):
+            return v
+        if v.startswith("postgres://"):
+            return v.replace("postgres://", "postgresql+psycopg://", 1)
+        if v.startswith("postgresql://") and "+psycopg" not in v:
+            return v.replace("postgresql://", "postgresql+psycopg://", 1)
+        return v
 
     @model_validator(mode="after")
     def validate_production_secrets(self):
@@ -84,3 +89,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+# tuneps_scraper.py — lors de la création du client httpx
+cert = None
+if settings.TUNEPS_CLIENT_CERT:
+    cert = (settings.TUNEPS_CLIENT_CERT, settings.TUNEPS_CLIENT_KEY or None)

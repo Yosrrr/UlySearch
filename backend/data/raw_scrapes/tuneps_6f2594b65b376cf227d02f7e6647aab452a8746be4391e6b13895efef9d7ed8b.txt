@@ -1,0 +1,10 @@
+SOURCE: tuneps
+REFERENCE: 20260901626
+OBJET: Acquisition d’un Bulldozer sur chenilles
+ACHETEUR: Commissariat Régional au Développement Agricole de Jendouba
+CATEGORIE_SITE: 
+DATE_PUBLICATION: 2026-09-21 10:14:00.413727
+DATE_LIMITE: 2026-10-21 10:00:00
+LIEN: https://www.tuneps.tn/portail/detail-offre?id=135672
+---
+

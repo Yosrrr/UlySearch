@@ -10,8 +10,7 @@ from app.models.company_tender import CompanyTender
 from app.models.known_buyer import KnownBuyer
 from app.models.sotradies import Sotradies
 from app.services.buyer_matcher import find_matching_buyer
-from sqlalchemy import or_
-from app.models.configuration import Configuration
+
 
 def rematch_company_tenders(company_id: int) -> int:
     """Rematch les marchés d'UNE entreprise avec SES acheteurs uniquement."""

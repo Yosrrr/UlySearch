@@ -1,0 +1,10 @@
+SOURCE: tuneps
+REFERENCE: 20260901969
+OBJET: إقتناء وتركيب وتشغيل تجهيزات طبية لفائدة قسم أمراض وجراحة العيون وقسم جراحة الوجه والفكين
+ACHETEUR: Hôpital Militaire Principal d’Instruction de Tunis
+CATEGORIE_SITE: 
+DATE_PUBLICATION: 2026-09-26 08:26:11.791564
+DATE_LIMITE: 2026-10-16 10:00:00
+LIEN: https://www.tuneps.tn/portail/detail-offre?id=135994
+---
+

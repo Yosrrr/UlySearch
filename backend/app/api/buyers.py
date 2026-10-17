@@ -10,7 +10,6 @@ from app.services.buyer_importer import import_known_buyers
 from app.services.buyer_ocr_importer import import_buyers_from_scan
 from app.api.deps import get_current_user, require_admin_or_superadmin
 
-
 router = APIRouter(prefix="/buyers", tags=["buyers"])
 MAX_SCAN_SIZE = 15 * 1024 * 1024  
 MAGIC_BYTES = {b"%PDF": "pdf", b"\xff\xd8\xff": "jpg", b"\x89PNG\r\n\x1a\n": "png"}
@@ -77,7 +76,8 @@ def import_buyers(                      # async def → def
     db: Session = Depends(get_db),
     user=Depends(require_admin_or_superadmin),
 ):
-    contents = file.file.read()         # await file.read() → file.file.read()
+    contents = file.file.read() 
+    company_id = _buyer_query(db, user) # await file.read() → file.file.read()
 
     if len(contents) > MAX_SCAN_SIZE:
         raise HTTPException(413, "Fichier trop volumineux (15 Mo maximum).")
@@ -94,12 +94,15 @@ def import_buyers(                      # async def → def
     
     if background_tasks is not None:
         background_tasks.add_task(rematch_company_tenders, company_id)
+        
+
 
     return {"importes": count}
 
 
 @router.post("/import-scan")
-def import_buyers_scan(          # def → threadpool, event loop libre (AVAIL-001)
+def import_buyers_scan(    
+    background_tasks: BackgroundTasks,                    # def → threadpool, event loop libre (AVAIL-001)
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user=Depends(require_admin_or_superadmin),
@@ -118,7 +121,7 @@ def import_buyers_scan(          # def → threadpool, event loop libre (AVAIL-0
         result = import_buyers_from_scan(db, contents, file.filename, company_id)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-
+    background_tasks.add_task(rematch_company_tenders, company_id)
     return result
 
 

@@ -1,0 +1,10 @@
+SOURCE: tuneps
+REFERENCE: 20261001279
+OBJET: إقتناء محولات كهربائية
+ACHETEUR: Commissariat Régional au Développement Agricole de Kébili
+CATEGORIE_SITE: 
+DATE_PUBLICATION: 2026-10-14 09:41:59.706951
+DATE_LIMITE: 2026-11-16 09:30:00
+LIEN: https://www.tuneps.tn/portail/detail-offre?id=137714
+---
+

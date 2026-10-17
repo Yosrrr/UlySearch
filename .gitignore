@@ -35,7 +35,7 @@ dist/
 *.log
 
 *.md
-*.txt
+
 
 backend/dump.rdb
 

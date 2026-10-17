@@ -5,7 +5,7 @@ from app.core.config import settings
 from contextlib import contextmanager
 
 
-engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True, pool_recycle=300)
+engine = create_engine(settings.DATABASE_URL,  hide_parameters=True, pool_pre_ping=True, pool_recycle=300)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
 Base = declarative_base()
 

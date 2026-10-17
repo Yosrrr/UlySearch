@@ -1,0 +1,10 @@
+SOURCE: tuneps
+REFERENCE: 20261001607
+OBJET: la réalisation des travaux du réseau de transfert des eaux usées brutes et épurées, de génie civil, fourniture, montage et essais des équipements électromécaniques de la station d’épuration de Dahmani / El Ksour
+ACHETEUR: Office National de l’Assainissement
+CATEGORIE_SITE: 
+DATE_PUBLICATION: 2026-10-16 14:52:13.718852
+DATE_LIMITE: 2026-12-22 10:00:00
+LIEN: https://www.tuneps.tn/portail/detail-offre?id=137862
+---
+

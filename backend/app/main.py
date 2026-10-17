@@ -25,29 +25,6 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 # ---------------------------------------------------------------------------
-# Modèles SQLAlchemy
-# ---------------------------------------------------------------------------
-
-# Ces imports enregistrent les modèles dans Base.metadata et permettent
-# à SQLAlchemy de résoudre leurs relations.
-from app.models import (  # noqa: F401
-    audit_log,
-    commercial,
-    company,
-    company_source,
-    company_tender,
-    configuration,
-    known_buyer,
-    pipeline_log,
-    scraping_source,
-    source_account,
-    sent_log,
-    sotradies,
-    system_action_log,
-    user,
-)
-
-# ---------------------------------------------------------------------------
 # Routeurs API
 # ---------------------------------------------------------------------------
 
@@ -251,44 +228,6 @@ app.include_router(registration_router, prefix="/api")
 # ---------------------------------------------------------------------------
 # Health check
 # ---------------------------------------------------------------------------
-
-
-@app.get("/health")
-def health():
-    """Liveness + deps (DB, Redis). 200 si ok, 503 si degraded."""
-    checks: dict = {
-        "status": "ok",
-        "app": settings.APP_NAME,
-        "env": settings.ENV,
-    }
-
-    try:
-        from app.core.database import SessionLocal
-        db = SessionLocal()
-        try:
-            db.execute(text("SELECT 1"))
-        finally:
-            db.close()
-        checks["database"] = "ok"
-    except Exception as exc:
-        checks["database"] = f"error:{type(exc).__name__}"
-        checks["status"] = "degraded"
-
-    try:
-        import redis as _redis
-        r = _redis.Redis.from_url(
-            settings.REDIS_URL,
-            socket_connect_timeout=1,
-            socket_timeout=1,
-        )
-        r.ping()
-        checks["redis"] = "ok"
-    except Exception as exc:
-        checks["redis"] = f"error:{type(exc).__name__}"
-        checks["status"] = "degraded"
-
-    code = 200 if checks["status"] == "ok" else 503
-    return JSONResponse(content=checks, status_code=code)
 @app.get("/health", tags=["health"])
 def health_live():
     """Liveness : le process répond. Jamais 503 sur dépendance externe."""
