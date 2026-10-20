@@ -2,8 +2,8 @@ databases:
   - name: UlySearch-db
     plan: basic-256mb
     region: frankfurt
-    databaseName: UlySearch
-    user: UlySearch
+    databaseName: ulysearch
+    user: ulysearch
 
 services:
   # ─── Redis broker Celery (pas d'éviction) ────────────────────────
