@@ -37,6 +37,22 @@ def test_rapport_skip_sans_direction_email(monkeypatch):
     assert result["status"] == "skipped"
 
 
+
+import pytest
+from sqlalchemy import text
+
+
+def _db_disponible() -> bool:
+    """Test d'integration : necessite PostgreSQL local. Skip en CI."""
+    try:
+        from app.core.database import engine
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        return False
+
+@pytest.mark.skipif(not _db_disponible(), reason="PostgreSQL indisponible")
 def test_rapport_envoi_simule(monkeypatch):
     """send_email mocké : vérifie le contenu réel depuis la base."""
     from app.core.config import settings

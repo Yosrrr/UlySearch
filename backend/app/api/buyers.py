@@ -69,33 +69,34 @@ def create_buyer(
     return buyer
 
 
+MAX_IMPORT_SIZE = 10 * 1024 * 1024  # 10 Mo
+
 @router.post("/import")
-def import_buyers(                      # async def → def
+def import_buyers(
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db),
     user=Depends(require_admin_or_superadmin),
 ):
-    contents = file.file.read() 
-    company_id = _buyer_query(db, user) # await file.read() → file.file.read()
+    contents = file.file.read()
 
-    if len(contents) > MAX_SCAN_SIZE:
-        raise HTTPException(413, "Fichier trop volumineux (15 Mo maximum).")
+    if len(contents) > MAX_IMPORT_SIZE:
+        raise HTTPException(413, "Fichier trop volumineux (10 Mo maximum).")
+
+    filename = (file.filename or "").lower()
+    if not any(filename.endswith(ext) for ext in (".xlsx", ".xls", ".csv")):
+        raise HTTPException(422, "Format non supporté : xlsx, xls ou csv attendu.")
 
     company_id = user.get("company_id")
-
     try:
         count = import_known_buyers(db, io.BytesIO(contents), company_id)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))  
+        raise HTTPException(status_code=422, detail=str(exc))
     except Exception:
         raise HTTPException(422, "Fichier illisible ou format inattendu.")
 
-    
     if background_tasks is not None:
         background_tasks.add_task(rematch_company_tenders, company_id)
-        
-
 
     return {"importes": count}
 

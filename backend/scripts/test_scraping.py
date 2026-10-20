@@ -25,6 +25,27 @@ from app.services.config_service import get_or_create_config
 
 from app.core.database import session_scope
 from app.models.sotradies import Sotradies
+
+import pytest
+from sqlalchemy import text
+
+
+def _db_disponible() -> bool:
+    """Test d'integration : necessite PostgreSQL local. Skip en CI."""
+    try:
+        from app.core.database import engine
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        return False
+
+pytestmark = pytest.mark.skipif(
+    not _db_disponible(),
+    reason="PostgreSQL indisponible (test integration)",
+)
+
+
 def test_scoring():
     with session_scope() as db:
         config = get_or_create_config(db)
