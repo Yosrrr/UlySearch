@@ -347,26 +347,25 @@ def list_rejected_tenders(
     db: Session = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
+    """
+    Marchés non retenus.
+    - superadmin : vue brute Sotradies (score calculé en Python → filtre
+      puis pagination en Python, même pattern que _filtered_for_superadmin ;
+      optimisation SQL = ticket P3)
+    - client : CompanyTender.decision == "rejete" (pagination SQL)
+    """
     if _is_superadmin(user):
-        threshold = getattr(settings, "RELEVANCE_RETAIN_THRESHOLD", 50)
-
-        # ✅ TECH-005 : compter + paginer EN SQL
-        base_query = (
+        results = (
             db.query(Sotradies)
             .order_by(Sotradies.date_detection.desc())
+            .all()
         )
-    total_raw = base_query.count()
-
-    # On charge toute la page (limit*3 max) pour filtrer sur score Python
-    # puis on prend les limit premiers qui passent le seuil
-    candidates = base_query.limit(min(limit * 10, 1000)).offset(offset).all()
-    out = [to_tender_out_from_sotradies(t) for t in candidates]
-    out = [t for t in out if t.score < threshold and t.statut != "retenu"]
-
-    total = total_raw   # approximatif mais acceptable
-    items = out[:limit]
-
-    return TenderListPage(items=items, total=total)
+        out = [to_tender_out_from_sotradies(t) for t in results]
+        threshold = getattr(settings, "RELEVANCE_RETAIN_THRESHOLD", 50)
+        out = [t for t in out if t.score < threshold and t.statut != "retenu"]
+        total = len(out)
+        items = out[offset : offset + limit]
+        return TenderListPage(items=items, total=total, limit=limit, offset=offset)
 
     # ── Vue client (pagination SQL) ──────────────────────────────
     company_id = _require_company_id(user)
@@ -392,9 +391,7 @@ def list_rejected_tenders(
             .one_or_none()
         )
         if moi is None:
-            return TenderListPage(
-                items=[], total=0, limit=limit, offset=offset
-            )
+            return TenderListPage(items=[], total=0, limit=limit, offset=offset)
         query = query.filter(CompanyTender.commercial_id == moi.id)
 
     total = query.count()
@@ -414,9 +411,7 @@ def list_rejected_tenders(
         to_tender_out_from_match(m, t, noms.get(m.commercial_id))
         for m, t in rows
     ]
-    return TenderListPage(
-        items=items, total=total, limit=limit, offset=offset
-    )
+    return TenderListPage(items=items, total=total, limit=limit, offset=offset)
 
 def _commercial_names(db: Session, ids: set[int]) -> dict[int, str]:
     """Charge les noms de commerciaux en UNE requête (anti N+1, F-019)."""
