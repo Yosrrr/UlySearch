@@ -32,12 +32,8 @@ class Settings(BaseSettings):
     SENDER_EMAIL: str = "veille-ao@sotradies.tn"
     
     
-    AI_PUBLIC_SOURCE_IDS: list[int] = Field(default_factory=list)
-    AI_INTERNATIONAL_SOURCE_IDS: list[int] = Field(default_factory=list)
 
 
-    TUNEPS_CLIENT_CERT: str = ""   # chemin .pem/.crt exporté de la clé USB
-    TUNEPS_CLIENT_KEY: str = ""    # chemin de la clé privée associé
     
     OLLAMA_HOST: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "qwen3.5:9b"
@@ -45,20 +41,15 @@ class Settings(BaseSettings):
     OLLAMA_NUM_PREDICT: int =4096
     OLLAMA_TIMEOUT_SECONDS: float = 300.0
     
-    OLLAMA_MODEL_HEAVY: str = "qwen3.5:9b"
-    OLLAMA_NUM_PREDICT_HEAVY: int = 4096
     
     TESSERACT_CMD: str = ""   # chemin vers tesseract.exe si absent du PATH (souvent nécessaire sous Windows)
     POPPLER_PATH: str = ""    # dossier bin/ de Poppler si absent du PATH (requis par pdf2image pour les PDF scannés)
 
-    TUNEPS_USERNAME: str = ""
-    TUNEPS_PASSWORD: str = ""
     
    
     
     DIRECTION_EMAIL: str = ""
 
-    RELEVANCE_INSTANT_ALERT_THRESHOLD: int = 70
     RELEVANCE_RETAIN_THRESHOLD: int = 50
     
     # ✅ FIX Pydantic v2 : @classmethod + (cls, v) obligatoires
@@ -90,6 +81,3 @@ class Settings(BaseSettings):
 
 settings = Settings()
 # tuneps_scraper.py — lors de la création du client httpx
-cert = None
-if settings.TUNEPS_CLIENT_CERT:
-    cert = (settings.TUNEPS_CLIENT_CERT, settings.TUNEPS_CLIENT_KEY or None)
