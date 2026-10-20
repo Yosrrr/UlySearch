@@ -1,4 +1,4 @@
-﻿import io
+import io
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from fastapi import BackgroundTasks
