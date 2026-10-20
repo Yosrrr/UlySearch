@@ -60,3 +60,7 @@ frontend/.env
 celerybeat-schedule*
 
 *.bak
+backend/data/raw_scrapes/
+backend/data/rapport_test.html
+backend/data/raw_scrapes/
+backend/data/rapport_test.html
