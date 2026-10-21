@@ -80,4 +80,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-# tuneps_scraper.py — lors de la création du client httpx
