@@ -41,19 +41,12 @@ PAGE_SIZE = 100
 MAX_PAGES = 5          # garde-fou : 500 avis max par exécution
 LOOKBACK_DAYS = 3      # arrêt dès que les avis dépassent cette ancienneté
 REQUEST_TIMEOUT = 30   # secondes
-
+_DEFAULT_BUNDLE = os.path.join(os.path.dirname(__file__), "..", "..", "certs", "tuneps_chain.pem")
 def _tls_verify():
-    """... (docstring existant) ..."""
-    if os.getenv("TUNEPS_SSL_VERIFY", "false").strip().lower() not in ("1", "true", "yes"):
-        return False
-    bundle = os.getenv("TUNEPS_CA_BUNDLE", "").strip()
-    if bundle and not os.path.isfile(bundle):
-        # Erreur de CONFIG, pas de réseau : message explicite, échec immédiat
-        raise FileNotFoundError(
-            f"TUNEPS_CA_BUNDLE pointe vers un fichier inexistant : {bundle}. "
-            "Vérifiez le chemin dans render.yaml / .env."
-        )
-    return bundle if bundle else True
+    if os.getenv("TUNEPS_SSL_VERIFY", "true").strip().lower() in ("0", "false", "no"):
+        return False                                   # opt-out explicite uniquement
+    bundle = os.getenv("TUNEPS_CA_BUNDLE", "").strip() or os.path.abspath(_DEFAULT_BUNDLE)
+    return bundle if os.path.isfile(bundle) else True
 
 
 def _parse_dt(raw: str | None) -> datetime | None:

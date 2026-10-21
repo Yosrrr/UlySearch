@@ -74,7 +74,7 @@ def get_status() -> dict:
 
 
 def start_worker() -> dict:
-    if _is_running(_read_pid(WORKER_PIDFILE)):
+    if _is_running(_read_pid(WORKER_PIDFILE), "worker"):
         return {"already_running": True}
 
     log = open(WORKER_LOGFILE, "a", encoding="utf-8")
@@ -104,7 +104,7 @@ def start_worker() -> dict:
 
 def stop_worker() -> dict:
     pid = _read_pid(WORKER_PIDFILE)
-    if not _is_running(pid):
+    if not _is_running(pid, "worker"):
         return {"already_stopped": True}
     psutil.Process(pid).terminate()
     WORKER_PIDFILE.unlink(missing_ok=True)
@@ -112,7 +112,7 @@ def stop_worker() -> dict:
 
 
 def start_beat() -> dict:
-    if _is_running(_read_pid(BEAT_PIDFILE)):
+    if _is_running(_read_pid(BEAT_PIDFILE), "beat"):
         return {"already_running": True}
 
     log = open(BEAT_LOGFILE, "a", encoding="utf-8")
@@ -142,7 +142,7 @@ def start_beat() -> dict:
 
 def stop_beat() -> dict:
     pid = _read_pid(BEAT_PIDFILE)
-    if not _is_running(pid):
+    if not _is_running(pid, "beat"):
         return {"already_stopped": True}
     psutil.Process(pid).terminate()
     BEAT_PIDFILE.unlink(missing_ok=True)

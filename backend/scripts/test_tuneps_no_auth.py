@@ -16,8 +16,8 @@ def _capture(monkeypatch):
     return sent
 
 
-def test_defaut_tls_non_verifie_et_aucun_identifiant(monkeypatch):
-    monkeypatch.delenv("TUNEPS_SSL_VERIFY", raising=False)
+def test_optout_explicite_tls_non_verifie_et_aucun_identifiant(monkeypatch):
+    monkeypatch.setenv("TUNEPS_SSL_VERIFY", "false")
     sent = _capture(monkeypatch)
     t.TunepsScraper(auth=("login", "secret"))._fetch_page(0)
     assert sent["verify"] is False
@@ -29,7 +29,7 @@ def test_pc_client_tls_verifie_alors_identifiants_envoyes(monkeypatch):
     monkeypatch.delenv("TUNEPS_CA_BUNDLE", raising=False)
     sent = _capture(monkeypatch)
     t.TunepsScraper(auth=("login", "secret"))._fetch_page(0)
-    assert sent["verify"] is True
+    assert isinstance(sent["verify"], str) and sent["verify"].endswith("tuneps_chain.pem")
     assert sent["headers"]["Authorization"].startswith("Basic ")
 
 
@@ -38,3 +38,12 @@ def test_une_seule_requete_par_page(monkeypatch):
     monkeypatch.setattr(t.Fetcher, "post", lambda url, **kw: calls.append(1) or _Resp())
     t.TunepsScraper()._fetch_page(0)
     assert len(calls) == 1
+
+def test_defaut_tls_verifie_avec_bundle_embarque(monkeypatch):
+    """SEC-004 : sans variable d'environnement, TLS est verifie via le bundle du depot."""
+    monkeypatch.delenv("TUNEPS_SSL_VERIFY", raising=False)
+    monkeypatch.delenv("TUNEPS_CA_BUNDLE", raising=False)
+    sent = _capture(monkeypatch)
+    t.TunepsScraper(auth=None)._fetch_page(0)
+    assert sent["verify"] is not False
+    assert isinstance(sent["verify"], str) and sent["verify"].endswith("tuneps_chain.pem")

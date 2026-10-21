@@ -355,17 +355,33 @@ def list_rejected_tenders(
     - client : CompanyTender.decision == "rejete" (pagination SQL)
     """
     if _is_superadmin(user):
-        results = (
-            db.query(Sotradies)
-            .order_by(Sotradies.date_detection.desc())
-            .all()
-        )
-        out = [to_tender_out_from_sotradies(t) for t in results]
         threshold = getattr(settings, "RELEVANCE_RETAIN_THRESHOLD", 50)
-        out = [t for t in out if t.score < threshold and t.statut != "retenu"]
-        total = len(out)
-        items = out[offset : offset + limit]
-        return TenderListPage(items=items, total=total, limit=limit, offset=offset)
+
+        query = db.query(Sotradies).order_by(
+            Sotradies.date_detection.desc(),
+            Sotradies.id.desc(),
+        )
+
+        start = max(offset, 0)
+        stop = start + limit
+        total = 0
+        items = []
+
+        # Parcours par lots : ne charge pas toute la table en mémoire.
+        for row in query.yield_per(500):
+            tender = to_tender_out_from_sotradies(row)
+
+            if tender.score < threshold and tender.statut != "retenu":
+                if start <= total < stop:
+                    items.append(tender)
+                total += 1
+
+        return TenderListPage(
+            items=items,
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
 
     # ── Vue client (pagination SQL) ──────────────────────────────
     company_id = _require_company_id(user)
@@ -433,7 +449,7 @@ def update_tender_feedback(
     if _is_superadmin(user):
         raise HTTPException(
             status_code=403,
-            detail="Le feedback est r�serv� aux clients.",
+            detail="Le feedback est réservé aux clients.",
         )
     if payload.feedback not in {"pertinent", "pas_pertinent"}:
         raise HTTPException(status_code=400, detail="Feedback invalide.")
@@ -443,7 +459,7 @@ def update_tender_feedback(
 
     tender = db.query(Sotradies).filter_by(id=tender_id).first()
     if tender is None:
-        raise HTTPException(status_code=404, detail="March� introuvable")
+        raise HTTPException(status_code=404, detail="Marché introuvable")
 
     match.feedback = payload.feedback
     match.feedback_at = datetime.now(UTC).replace(tzinfo=None)
@@ -471,7 +487,7 @@ def get_tender(
     if _is_superadmin(user):
         t = db.query(Sotradies).filter_by(id=tender_id).first()
         if not t:
-            raise HTTPException(status_code=404, detail="March� introuvable")
+            raise HTTPException(status_code=404, detail="Marché introuvable")
         result = to_tender_out_from_sotradies(t)
     else:
         company_id = _require_company_id(user)
@@ -479,7 +495,7 @@ def get_tender(
 
         tender = db.query(Sotradies).filter_by(id=tender_id).first()
         if tender is None:
-            raise HTTPException(status_code=404, detail="March� introuvable")
+            raise HTTPException(status_code=404, detail="Marché introuvable")
 
         result = to_tender_out_from_match(
             match, tender, _commercial_name(db, match.commercial_id)
@@ -516,12 +532,12 @@ def _get_match_scoped(
             .one_or_none()
         )
         if moi is None:
-            raise HTTPException(status_code=404, detail="March� introuvable")
+            raise HTTPException(status_code=404, detail="Marché introuvable")
         query = query.filter(CompanyTender.commercial_id == moi.id)
 
     match = query.first()
     if match is None:
-        raise HTTPException(status_code=404, detail="March� introuvable")
+        raise HTTPException(status_code=404, detail="Marché introuvable")
     return match
 
 @router.patch("/{tender_id}", response_model=TenderOut)
@@ -533,7 +549,7 @@ def update_tender_status(
 ):
     """
     - superadmin        : modifie Sotradies.statut (vue brute plateforme)
-    - client "retenu"   : REP�CHAGE ? CompanyTender.decision + feedback
+    - client "retenu"   : REPECHAGE -> CompanyTender.decision + feedback
     - client autre      : cycle commercial (CLIENT_STATUTS)
     """
     now = datetime.now(UTC).replace(tzinfo=None)
@@ -546,7 +562,7 @@ def update_tender_status(
 
         t = db.query(Sotradies).filter_by(id=tender_id).first()
         if not t:
-            raise HTTPException(status_code=404, detail="March� introuvable")
+            raise HTTPException(status_code=404, detail="Marché introuvable")
 
         ancien = t.statut
         t.statut = payload.statut
@@ -562,13 +578,13 @@ def update_tender_status(
         db.refresh(t)
         return to_tender_out_from_sotradies(t)
 
-    # -- Client : CompanyTender, isolation compl�te ---------------
+    # -- Client : CompanyTender, isolation complète ---------------
     company_id = _require_company_id(user)
     match = _get_match_scoped(db, user, company_id, tender_id)
 
     if payload.statut == "retenu":
-        # Rep�chage : change la D�CISION moteur, pas le cycle commercial.
-        # feedback="pertinent" prot�ge l'offre des recalculs automatiques.
+        # Repêchage : change la DÉCISION moteur, pas le cycle commercial.
+        # feedback="pertinent" protège l'offre des recalculs automatiques.
         ancien = match.decision
         match.decision = "retenu"
         match.feedback = "pertinent"

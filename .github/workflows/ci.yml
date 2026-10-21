@@ -33,6 +33,9 @@ jobs:
         run: alembic heads
 
       # Tests unitaires (sans base de données ni Redis)
+      - name: Static check (noms indefinis, imports morts)
+        run: python -m pyflakes app scripts
+
       - name: Unit tests
         run: python -m pytest scripts/ -q
         env: 

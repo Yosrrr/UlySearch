@@ -77,10 +77,10 @@ class Company(Base):
     # ── Lien avec User ──
     owner_id = Column(
     Integer,
-    ForeignKey("users.id", ondelete="SET NULL"),
-    nullable=True,    # ← DOIT être nullable
+    ForeignKey("users.id", ondelete="SET NULL", use_alter=True,  name="companies_owner_id_fkey"),
+    nullable=True,
     unique=True,
-    )
+)
 
     users = relationship(
         "User",

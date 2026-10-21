@@ -6,16 +6,10 @@ n'est stocké dans le code, la configuration ou les variables
 d'environnement (correctif de sécurité S4).
 """
 import os
-from datetime import datetime, timedelta
 
 from app.core.database import Base, SessionLocal, engine
 from app.core.security import hash_password
-from app.models.audit_log import AuditLog  # noqa: F401
 from app.models.commercial import Commercial  # noqa: F401
-from app.models.known_buyer import KnownBuyer  # noqa: F401
-from app.models.sent_log import SentLog  # noqa: F401
-from app.models.sotradies import Sotradies
-from app.models.system_action_log import SystemActionLog  # noqa: F401
 from app.models.user import User
 
 

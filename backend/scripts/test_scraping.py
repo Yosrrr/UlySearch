@@ -1,30 +1,16 @@
-# scripts/test_scoring.py
 """
 Test du scoring sur les marchés ONMP existants.
-python -m scripts.test_scoring
+python -m pytest scripts/test_scraping.py -s
 """
 import sys
 sys.path.insert(0, '.')
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import sys
-sys.path.insert(0, '.')
-
-from app.models import (  # noqa: F401
-    audit_log, commercial, company, configuration,
-    known_buyer, pipeline_log, scraping_source,
-    sent_log, sotradies, system_action_log, user,
-)
 
 from app.core.database import session_scope
 from app.models.sotradies import Sotradies
 from app.services.config_service import get_or_create_config
 
-
-
-
-from app.core.database import session_scope
-from app.models.sotradies import Sotradies
 
 import pytest
 from sqlalchemy import text

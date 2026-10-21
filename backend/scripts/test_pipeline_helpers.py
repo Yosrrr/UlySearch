@@ -1,5 +1,5 @@
 from datetime import datetime, date
-from app.services.pipeline import filter_today_only, _source_is_active
+from app.services.pipeline import filter_today_only
 
 
 class Tender:

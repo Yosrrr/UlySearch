@@ -6,6 +6,9 @@ from app.core.config import settings
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 from sqlalchemy import func
+from app.models.company_source import CompanySource
+from app.models.source_account import SourceAccount
+from app.services.source_credentials import encrypt_source_password
 
 from sqlalchemy.orm import Session
 
@@ -445,9 +448,26 @@ def register_client(
                 # True = le client active son site dès l'inscription
                 activate=False,
             )
-            # credentials privés si besoin...
+            if site["prive"] and site["login"] and site["mot_de_passe"]:
+                db.flush()
+                link = (
+                    db.query(CompanySource)
+                    .filter_by(company_id=company.id, source_id=source.id)
+                    .first()
+                )
+                if link is not None:
+                    account = (
+                        db.query(SourceAccount)
+                        .filter_by(company_source_id=link.id)
+                        .first()
+                    )
+                    if account is None:
+                        account = SourceAccount(company_source_id=link.id)
+                        db.add(account)
+                    account.login = site["login"]
+                    account.password_encrypted = encrypt_source_password(site["mot_de_passe"])
             selected_sources[source.id] = source
-            
+
 
         if len(selected_sources) > 10:
             raise HTTPException(422, "Maximum 10 sources par inscription.")
@@ -461,7 +481,7 @@ def register_client(
             code = source.nom.strip().lower()
             if source.type == "dedie" and code in active_sources:
                 active_sources[code]["actif"] = True
-                
+
         # 5. Configuration propre à cette entreprise uniquement.
         db.add(Configuration(
             company_id=company.id,
@@ -530,4 +550,3 @@ def register_client(
 
     response.headers["Cache-Control"] = "no-store"
     return result
-        

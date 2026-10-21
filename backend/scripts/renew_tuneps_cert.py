@@ -1,4 +1,4 @@
-﻿"""Renouvelle le certificat intermediaire Sectigo pour TUNEPS.
+"""Renouvelle le certificat intermediaire Sectigo pour TUNEPS.
 
 Usage : python scripts/renew_tuneps_cert.py
 """

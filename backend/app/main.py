@@ -28,7 +28,7 @@ from sqlalchemy import text
 # Routeurs API
 # ---------------------------------------------------------------------------
 
-from app.api import (   
+from app.api import (
     admin_config,
     admin_system,
     admin_users,
@@ -36,23 +36,23 @@ from app.api import (
     config_public,
     tenders,
 )
-from app.api.admin_ai_suggest import (   
+from app.api.admin_ai_suggest import (
     router as ai_suggest_router,
 )
-from app.api.admin_commercials import (   
+from app.api.admin_commercials import (
     router as admin_commercials_router,
 )
-from app.api.admin_sources import (   
+from app.api.admin_sources import (
     router as admin_sources_router,
 )
 from contextlib import asynccontextmanager
 from app.api.admin_companies import router as admin_companies_router
-from app.api.audit import router as audit_router   
-from app.api.buyers import router as buyers_router   
-from app.api.registration import (   
+from app.api.audit import router as audit_router
+from app.api.buyers import router as buyers_router
+from app.api.registration import (
     router as registration_router,
 )
- 
+
 import logging
 
 from fastapi.exceptions import RequestValidationError
@@ -60,7 +60,7 @@ from fastapi.exception_handlers import (
     http_exception_handler,
     request_validation_exception_handler,
 )
-from starlette.exceptions import HTTPException as StarletteHTTPException 
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +75,7 @@ _is_production = str(settings.ENV).lower() == "production"
 
 app = FastAPI(
     title=settings.APP_NAME,
-    lifespan=lifespan,                             
+    lifespan=lifespan,
     docs_url=None if _is_production else "/docs",
     redoc_url=None if _is_production else "/redoc",
     openapi_url=None if _is_production else "/openapi.json",
@@ -236,8 +236,7 @@ def health_live():
 
 @app.get("/ready", tags=["health"])
 def health_ready():
-    """Readiness : vérifie DB et Redis. Pour le monitoring, pas le load balancer."""
-    checks = {"status": "ok", "env": settings.ENV}
+    checks = {"status": "ok"}  # ← pas d'env ni de classe d'erreur
 
     try:
         from app.core.database import SessionLocal
@@ -247,24 +246,25 @@ def health_ready():
         finally:
             db.close()
         checks["database"] = "ok"
-    except Exception as exc:
-        checks["database"] = f"error:{type(exc).__name__}"
+    except Exception:
+        checks["database"] = "error"  # ← pas le type d'exception
         checks["status"] = "degraded"
 
     try:
         import redis as _redis
         r = _redis.Redis.from_url(
-            settings.REDIS_URL, socket_connect_timeout=1, socket_timeout=1
+            settings.REDIS_URL,
+            socket_connect_timeout=1,
+            socket_timeout=1
         )
         r.ping()
         checks["redis"] = "ok"
-    except Exception as exc:
-        checks["redis"] = f"error:{type(exc).__name__}"
+    except Exception:
+        checks["redis"] = "error"  # ← pas le type d'exception
         checks["status"] = "degraded"
 
     code = 200 if checks["status"] == "ok" else 503
     return JSONResponse(content=checks, status_code=code)
-
 # ---------------------------------------------------------------------------
 # Frontend Vite en production
 # ---------------------------------------------------------------------------

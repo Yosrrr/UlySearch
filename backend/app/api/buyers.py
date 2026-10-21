@@ -1,8 +1,9 @@
 import io
+import zipfile
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from fastapi import BackgroundTasks
-from app.services.buyer_rematcher import rematch_company_tenders 
+from app.services.buyer_rematcher import rematch_company_tenders
 from app.core.database import get_db
 from app.models.known_buyer import KnownBuyer
 from app.schemas.buyer import BuyerOut, BuyerCreate, BuyerUpdate
@@ -11,7 +12,7 @@ from app.services.buyer_ocr_importer import import_buyers_from_scan
 from app.api.deps import get_current_user, require_admin_or_superadmin
 
 router = APIRouter(prefix="/buyers", tags=["buyers"])
-MAX_SCAN_SIZE = 15 * 1024 * 1024  
+MAX_SCAN_SIZE = 15 * 1024 * 1024
 MAGIC_BYTES = {b"%PDF": "pdf", b"\xff\xd8\xff": "jpg", b"\x89PNG\r\n\x1a\n": "png"}
 
 
@@ -37,7 +38,7 @@ def list_buyers(db: Session = Depends(get_db), user=Depends(get_current_user)):
     return _buyer_query(db, user).order_by(KnownBuyer.nom_acheteur).all()
 
 
-    
+
 @router.post("", response_model=BuyerOut)
 def create_buyer(
     payload: BuyerCreate,
@@ -65,7 +66,7 @@ def create_buyer(
     db.commit()
     background_tasks.add_task(rematch_company_tenders, buyer.company_id)
     db.refresh(buyer)
-    
+
     return buyer
 
 
@@ -73,36 +74,86 @@ MAX_IMPORT_SIZE = 10 * 1024 * 1024  # 10 Mo
 
 @router.post("/import")
 def import_buyers(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db),
     user=Depends(require_admin_or_superadmin),
 ):
-    contents = file.file.read()
+    # L'importeur lit un classeur Excel, pas un CSV ni un fichier .xls.
+    filename = (file.filename or "").strip().lower()
+    if not filename.endswith(".xlsx"):
+        raise HTTPException(
+            status_code=422,
+            detail="Format non supporté : fichier .xlsx attendu.",
+        )
 
+    # Lecture bornée : ne charge pas un fichier arbitrairement gros en mémoire.
+    contents = file.file.read(MAX_IMPORT_SIZE + 1)
     if len(contents) > MAX_IMPORT_SIZE:
-        raise HTTPException(413, "Fichier trop volumineux (10 Mo maximum).")
+        raise HTTPException(
+            status_code=413,
+            detail="Fichier trop volumineux (10 Mo maximum).",
+        )
 
-    filename = (file.filename or "").lower()
-    if not any(filename.endswith(ext) for ext in (".xlsx", ".xls", ".csv")):
-        raise HTTPException(422, "Format non supporté : xlsx, xls ou csv attendu.")
+    # Un fichier XLSX est une archive ZIP contenant un classeur Office.
+    try:
+        with zipfile.ZipFile(io.BytesIO(contents)) as archive:
+            names = set(archive.namelist())
+            if (
+                "[Content_Types].xml" not in names
+                or "xl/workbook.xml" not in names
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Contenu invalide : classeur XLSX attendu.",
+                )
+
+            infos = archive.infolist()
+            if len(infos) > 2000 or sum(item.file_size for item in infos) > 50 * 1024 * 1024:
+                raise HTTPException(
+                    status_code=413,
+                    detail="Contenu XLSX décompressé trop volumineux.",
+                )
+    except zipfile.BadZipFile:
+        raise HTTPException(
+            status_code=422,
+            detail="Contenu invalide : fichier XLSX corrompu.",
+        )
 
     company_id = user.get("company_id")
+    if company_id is not None:
+        company_id = int(company_id)
+    elif user.get("profil") != "superadmin":
+        raise HTTPException(
+            status_code=403,
+            detail="Compte non rattaché à une entreprise.",
+        )
+
     try:
-        count = import_known_buyers(db, io.BytesIO(contents), company_id)
+        count = import_known_buyers(
+            db,
+            io.BytesIO(contents),
+            company_id,
+        )
     except ValueError as exc:
+        db.rollback()
         raise HTTPException(status_code=422, detail=str(exc))
     except Exception:
-        raise HTTPException(422, "Fichier illisible ou format inattendu.")
+        db.rollback()
+        raise HTTPException(
+            status_code=422,
+            detail="Fichier illisible ou format inattendu.",
+        )
 
-    if background_tasks is not None:
+    # Un superadmin peut importer des acheteurs globaux sans entreprise.
+    if company_id is not None:
         background_tasks.add_task(rematch_company_tenders, company_id)
 
     return {"importes": count}
 
 
 @router.post("/import-scan")
-def import_buyers_scan(    
+def import_buyers_scan(
     background_tasks: BackgroundTasks,                    # def → threadpool, event loop libre (AVAIL-001)
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -150,5 +201,5 @@ def update_buyer(
     db.commit()
     background_tasks.add_task(rematch_company_tenders, buyer.company_id)
     db.refresh(buyer)
-    
+
     return buyer

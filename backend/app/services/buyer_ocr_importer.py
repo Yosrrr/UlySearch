@@ -25,9 +25,9 @@ if settings.TESSERACT_CMD:
 
 OCR_LANG = "fra"
 CHUNK_SIZE = 3000  # cohérent avec la limite déjà appliquée à Qwen ailleurs (ai_detail_extractor.py)
-MAX_PAGES = 20        
-OCR_DPI = 150 
-
+MAX_PAGES = 20
+OCR_DPI = 150
+Image.MAX_IMAGE_PIXELS = 25_000_000
 SYSTEM_PROMPT = """Tu lis le texte brut issu d'un OCR (reconnaissance optique de caractères) sur une liste papier scannée de clients/acheteurs publics ou privés tunisiens.
 Le texte peut contenir des erreurs d'OCR, des lignes mal alignées ou du bruit — fais de ton mieux pour reconstituer les entrées malgré tout.
 Réponds UNIQUEMENT en JSON strict, sans aucun texte autour, avec exactement cette forme :
