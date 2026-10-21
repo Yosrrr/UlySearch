@@ -1,4 +1,4 @@
-﻿"""
+"""
 API des marchés — multi-tenant.
 
 - admin / user  : lit/écrit CompanyTender de LEUR company_id
