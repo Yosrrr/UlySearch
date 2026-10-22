@@ -38,7 +38,7 @@ jobs:
 
       - name: Unit tests
         run: python -m pytest scripts/ -q
-        env: 
+        env:
           ENV: development
 
   frontend:
@@ -56,6 +56,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npx eslint src
+      - run: npm audit --omit=dev --audit-level=high
 
   secrets-scan:
     runs-on: ubuntu-latest

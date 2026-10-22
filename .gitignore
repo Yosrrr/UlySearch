@@ -10,7 +10,7 @@ node_modules/
 dist/
 
 *.pyc
-
+.github/workflows/ci.yml
 backend/run/
 backend/data_certs/
 backend/celerybeat-schedule.*
@@ -33,7 +33,6 @@ dist/
 
 # Logs
 *.log
-
 *.md
 
 
@@ -64,3 +63,13 @@ backend/data/raw_scrapes/
 backend/data/rapport_test.html
 backend/data/raw_scrapes/
 backend/data/rapport_test.html
+
+# Notes personnelles (non versionnees)
+IA_Sotradies.md
+SOTRADIERS.md
+Sotadies_notes.md
+
+# Notes personnelles (non versionnees)
+IA_Sotradies.md
+SOTRADIERS.md
+Sotadies_notes.md
