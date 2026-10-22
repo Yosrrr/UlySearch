@@ -10,31 +10,21 @@ node_modules/
 dist/
 
 *.pyc
-.github/workflows/ci.yml
 backend/run/
 backend/data_certs/
 backend/celerybeat-schedule.*
 backend/debug_onmp/
 debug_onmp/
 # Python
-venv/
-.venv/
-__pycache__/
-*.pyc
 
 # Environment
-.env
 
 # Node
-node_modules/
 
 # Frontend build
-dist/
 
 # Logs
 *.log
-*.md
-
 
 backend/dump.rdb
 
@@ -44,15 +34,11 @@ backend/debug_*.html
 backend/debug_*.png
 backend/email_previews/
 backend/debug_bad/
-backend/debug_onmp/
-backend/debug_tuneps/
-backend/debug_tuneps_detail/
 backend/debug_boamp.html
 backend/onboarding_response.json
 
 backend/requirements_old.txt
 backend/gen_migration.py
-
 
 backend/.env
 frontend/.env
@@ -61,15 +47,10 @@ celerybeat-schedule*
 *.bak
 backend/data/raw_scrapes/
 backend/data/rapport_test.html
-backend/data/raw_scrapes/
-backend/data/rapport_test.html
 
 # Notes personnelles (non versionnees)
 IA_Sotradies.md
 SOTRADIERS.md
 Sotadies_notes.md
 
-# Notes personnelles (non versionnees)
-IA_Sotradies.md
-SOTRADIERS.md
-Sotadies_notes.md
+*.md
