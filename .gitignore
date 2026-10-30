@@ -54,3 +54,7 @@ SOTRADIERS.md
 Sotadies_notes.md
 
 *.md
+!PROJECT_CONTEXT.md
+dry_run_*.txt
+run_*.txt
+a_examiner_*.csv

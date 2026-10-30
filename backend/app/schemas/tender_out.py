@@ -76,17 +76,22 @@ def _best_from_details(score_details: dict | None) -> tuple[str | None, int]:
 
 
 def _rejection_reason(score: int, decision: str | None, score_details: dict | None = None) -> str | None:
-    # Seuls les marchés rejetés par le moteur d'un client ont une raison.
-    # Vue superadmin (decision=None) : pas de score global, donc pas de raison.
-    if decision != "rejete":
+    """Motif affiché sur la page des offres rejetées (None en vue superadmin : decision=None)."""
+    if decision not in ("rejete", "a_examiner"):
         return None
-    for data in (score_details or {}).values():
-        if isinstance(data, dict) and data.get("methode") == "exclusion":
-            mot = data.get("mot_exclusion")
-            return f"Mot d'exclusion détecté : {mot}" if mot else "Mot d'exclusion détecté"
-    if score <= 0:
-        return "Aucun mot-clé métier détecté"
-    return f"Score de pertinence insuffisant ({score}%)"
+    details = [d for d in (score_details or {}).values() if isinstance(d, dict)]
+    methodes = {str(d.get("methode") or "") for d in details}
+    raison = next((" ".join(str(d["raison_ia"]).split()) for d in details if d.get("raison_ia")), "")
+    if "exclusion" in methodes:
+        mot = next((d.get("mot_exclusion") for d in details if d.get("mot_exclusion")), None)
+        return f"Mot d'exclusion détecté : {mot}" if mot else "Mot d'exclusion détecté"
+    if "ia_rejet" in methodes:
+        return f"Hors besoin selon le contexte : {raison}" if raison else "Hors besoin selon le contexte (IA)"
+    if "a_examiner" in methodes:
+        return f"À examiner (aucun mot-clé, IA confiante) : {raison}" if raison else "À examiner (aucun mot-clé, IA confiante)"
+    if "non_retenu" in methodes:
+        return "Aucun mot-clé du client dans l'annonce"
+    return f"Score {score} inférieur au seuil de décision"
 
 def to_tender_out_from_sotradies(t) -> TenderOut:
     """Vue superadmin / brute : score depuis Sotradies.score_details."""
@@ -179,7 +184,7 @@ def to_tender_out(t) -> TenderOut:
 
 
 class TenderListPage(BaseModel):
-    
+
     items: list[TenderOut]
     total: int
     limit: int

@@ -488,11 +488,10 @@ def register_client(
             score_decision_threshold=50,
             score_instant_alert_threshold=70,
             categories=categories,
-            exclusion_keywords=_unique_strings(
-                payload.exclusion_keywords
-            ),
+            exclusion_keywords=_unique_strings(payload.exclusion_keywords),
             assignment_rules=rules,
             active_sources=active_sources,
+            description_activite=((payload.description_activite or "").strip()[:2000] or None),  # lue par le filtre IA
         ))
 
         pending = sum(

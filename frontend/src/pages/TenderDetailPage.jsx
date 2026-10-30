@@ -12,6 +12,7 @@ import { updateTenderStatus, updateTenderFeedback } from "../api/tenders";
 import { formatDate } from "../utils/formatters";
 import { extractScoreInfo } from "../utils/scoreDetails";
 import { categoryLabel } from "../utils/categories";
+import DecisionBadge from "../components/tender/DecisionBadge";
 
 const STATUTS = [
   { value: "nouveau", label: "Nouveau" },
@@ -95,6 +96,7 @@ export default function TenderDetailPage() {
             ) : (
               <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-400">Score à venir</span>
             )}
+            <DecisionBadge decision={tender.decision} /> 
             <TenderStatusBadge statut={tender.statut} />
           </div>
         </div>

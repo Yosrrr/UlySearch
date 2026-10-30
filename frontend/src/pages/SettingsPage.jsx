@@ -6,6 +6,7 @@ import PageWrapper from "../components/layout/PageWrapper";
 import Alert from "../components/ui/Alert";
 import Spinner from "../components/ui/Spinner";
 import Modal from "../components/ui/Modal";
+
 import {
   getConfiguration,
   updateThresholds,
@@ -120,8 +121,9 @@ export default function SettingsPage() {
     </PageWrapper>
   );
 }
-
 // ===== THRESHOLDS SECTION =====
+
+
 function ThresholdsSection({ initialConfig }) {
   const [decisionScore, setDecisionScore] = useState(initialConfig?.score_decision_threshold || 50);
   const [instantScore, setInstantScore] = useState(initialConfig?.score_instant_alert_threshold || 70);

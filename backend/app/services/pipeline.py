@@ -42,7 +42,6 @@ from app.services.mailer import send_email
 from app.services.pipeline_logger import log_pipeline_event
 from app.services.raw_dump import dump_tender_to_txt
 from app.services.scoring_orchestrator import score_tender_full
-from app.services.keyword_classifier import first_matching_keyword
 
 from app.services.scrapers.onmp_scraper import OnmpScraper
 from app.services.scrapers.tuneps_scraper import TunepsScraper
@@ -95,7 +94,7 @@ def _build_scrapers(company_id: int | None = None) -> list:
     dedicated_factories = {
         "onmp": OnmpScraper,
         "tuneps": TunepsScraper,
-        
+
     }
 
     scrapers = []
@@ -131,7 +130,7 @@ def _build_scrapers(company_id: int | None = None) -> list:
                 use_browser=bool(source["use_browser"]),
                 max_pages=int(source["max_pages"] or 3),
                 auth=auth,
-                
+
             )
         else:
             print(f"[pipeline] Type inconnu : {source['type']}")
@@ -208,7 +207,7 @@ def filter_today_only(
     """
     kept: list[SotradiesRaw] = []
     sans_date = 0
-  
+
 
     for t in tenders:
         pub = getattr(t, "date_publication", None)
@@ -333,7 +332,6 @@ def _resolve_commercial_id(db, company_id, category, assignment_rules, configure
             return c.id
     return None
 
-
 def _tender_to_raw(tender: Sotradies) -> SotradiesRaw:
     return SotradiesRaw(
         source=tender.source,
@@ -345,6 +343,13 @@ def _tender_to_raw(tender: Sotradies) -> SotradiesRaw:
         reference=tender.reference,
         budget_estime=(float(tender.budget_estime) if tender.budget_estime is not None else None),
         lien=tender.lien,
+        # Contexte transmis au Tier 2 (IA)
+        description_detaillee=tender.description_detaillee,
+        type_marche=tender.type_marche,
+        procedure_passation=tender.procedure_passation,
+        region_execution=tender.region_execution,
+        lieu_ouverture_offres=tender.lieu_ouverture_offres,
+        caractere_prix=tender.caractere_prix,
     )
 
 
@@ -369,88 +374,171 @@ def _already_enriched(db, tender_id: str) -> bool:
     )
 
 
-def _score_for_all_companies(db, tender: Sotradies, source_name: str, run_id: str) -> dict:
-    summary = {"any_retained": False, "scored": 0}
-   
+DEFAULT_DECISION_THRESHOLD = 50
 
-    normalized = source_name.lower()
+
+def _resolve_source(db, source_name: str):
+    """Source scrapée (ScrapingSource) à partir du nom utilisé par le pipeline."""
+    normalized = (source_name or "").lower()
     if normalized.startswith("web_"):
         try:
             source_id = int(normalized.replace("web_", ""))
         except ValueError:
-            return summary
-        source = db.get(ScrapingSource, source_id)
-    else:
-        source = db.query(ScrapingSource).filter(ScrapingSource.type == "dedie", func.lower(ScrapingSource.nom) == source_name.lower()).one_or_none()
+            return None
+        return db.get(ScrapingSource, source_id)
+    return (
+        db.query(ScrapingSource)
+        .filter(
+            ScrapingSource.type == "dedie",
+            func.lower(ScrapingSource.nom) == normalized,
+        )
+        .one_or_none()
+    )
 
+
+def _score_company_tender(db, company_id: int, tender, run_id: str, config, existing):
+    """
+    Décide une offre pour UN client, écrit la ligne CompanyTender et retourne la décision.
+    Seul endroit où le filtre (orchestrateur) est appelé depuis le pipeline.
+    """
+    categories = config.categories or {}
+    exclusions = config.exclusion_keywords or []
+
+    score_details = score_tender_full(
+        _tender_to_raw(tender),
+        categories,
+        exclusions,
+        profil_client=getattr(config, "description_activite", None),
+    )
+    categorie, score = _best_category(score_details)
+    
+    methodes = {d.get("methode") for d in score_details.values()}
+    if "a_verifier" in methodes:
+        decision = "a_verifier"        # panne IA : réévaluée au run suivant
+    elif "a_examiner" in methodes:
+        decision = "a_examiner"        # IA sûre sans mot-clé : revue humaine, jamais notifiée
+    else:
+        seuil = config.score_decision_threshold
+        if seuil is None:
+            seuil = DEFAULT_DECISION_THRESHOLD
+        decision = "retenu" if score >= seuil else "rejete"
+
+
+    commercial_id = _resolve_commercial_id(
+        db, company_id, categorie, config.assignment_rules or {}, categories
+    )
+    acheteur_connu = "Inconnu"
+    try:
+        acheteur_connu = match_buyer(tender.acheteur, company_id=company_id) or "Inconnu"
+    except Exception:
+        pass
+
+    if existing is None:
+        existing = CompanyTender(
+            company_id=company_id,
+            tender_id=tender.id,
+            statut="nouveau",
+        )
+        db.add(existing)
+
+    existing.score = score
+    existing.categorie = categorie
+    existing.score_details = score_details
+    existing.decision = decision
+    existing.commercial_id = commercial_id
+    existing.acheteur_connu = acheteur_connu
+
+    log_pipeline_event(
+        db,
+        run_id,
+        "COMPANY_SCORED",
+        source=tender.source,
+        tender_id=tender.id,
+        payload={
+            "company_id": company_id,
+            "score": score,
+            "decision": decision,
+            "categorie": categorie,
+            "commercial_id": commercial_id,
+        },
+    )
+    return decision
+
+
+def _score_for_all_companies(db, tender, source_name: str, run_id: str) -> dict:
+    """Score une offre pour chaque client abonné à la source."""
+    summary = {"any_retained": False, "scored": 0, "a_verifier": 0}
+
+    source = _resolve_source(db, source_name)
     if source is None:
         return summary
 
-    subscriptions = db.query(CompanySource).filter(CompanySource.source_id == source.id, CompanySource.actif.is_(True)).all()
-    if not subscriptions:
-        return summary
-
-    raw = _tender_to_raw(tender)
+    subscriptions = (
+        db.query(CompanySource)
+        .filter(CompanySource.source_id == source.id, CompanySource.actif.is_(True))
+        .all()
+    )
 
     for sub in subscriptions:
         company_id = sub.company_id
-        already = db.query(CompanyTender).filter_by(company_id=company_id, tender_id=tender.id).first()
-        if already:
-            if already.decision == "retenu":
+        existing = (
+            db.query(CompanyTender)
+            .filter_by(company_id=company_id, tender_id=tender.id)
+            .first()
+        )
+
+        # Une décision définitive (retenu / rejete) n'est jamais recalculée.
+        if existing is not None and existing.decision != "a_verifier":
+            if existing.decision == "retenu":
                 summary["any_retained"] = True
             continue
 
-        config = db.query(Configuration).filter(Configuration.company_id == company_id).one_or_none()
+        config = (
+            db.query(Configuration)
+            .filter(Configuration.company_id == company_id)
+            .one_or_none()
+        )
         if config is None or not config.categories:
             continue
 
-        categories = config.categories or {}
-        exclusions = config.exclusion_keywords or []
-        matched_exclusion = first_matching_keyword(tender.objet, exclusions)
-
-        if matched_exclusion:
-            score_details = {
-                cat: {"score": 0, "mots_cles_matches": [], "methode": "exclusion", "mot_exclusion": matched_exclusion}
-                for cat in categories
-            }
-            score, categorie = 0, None
-        else:
-            try:
-                score_details = score_tender_full(raw, categories, exclusions) or {}
-            except Exception as exc:
-                score_details = {}
-                log_pipeline_event(
-                    db, run_id, "COMPANY_SCORING_ERROR",
-                    source=tender.source, tender_id=tender.id,
-                    message="Erreur de scoring pour ce client",
-                    payload={"company_id": company_id, "error": type(exc).__name__},
-                )
-            categorie, score = _best_category(score_details)
-
-        decision = "retenu" if score >= config.score_decision_threshold else "rejete"
+        decision = _score_company_tender(db, company_id, tender, run_id, config, existing)
+        summary["scored"] += 1
         if decision == "retenu":
             summary["any_retained"] = True
-        summary["scored"] += 1
-
-        commercial_id = _resolve_commercial_id(db, company_id, categorie, config.assignment_rules or {}, categories)
-        acheteur_connu = "Inconnu"
-        try:
-            acheteur_connu = match_buyer(tender.acheteur, company_id=company_id) or "Inconnu"
-        except Exception:
-            pass
-
-        db.add(CompanyTender(
-            company_id=company_id, tender_id=tender.id, score=score, categorie=categorie,
-            score_details=score_details, decision=decision, statut="nouveau",
-            commercial_id=commercial_id, acheteur_connu=acheteur_connu,
-        ))
-
-        log_pipeline_event(
-            db, run_id, "COMPANY_SCORED", source=tender.source, tender_id=tender.id,
-            payload={"company_id": company_id, "score": score, "decision": decision, "categorie": categorie, "commercial_id": commercial_id, "mot_exclusion": matched_exclusion}
-        )
+        elif decision == "a_verifier":
+            summary["a_verifier"] += 1
 
     return summary
+
+
+def _retry_pending_tenders(db, run_id: str, limit: int = 200) -> int:
+    """Réévalue les offres restées « a_verifier » (IA indisponible) : seulement celles
+    qu'aucun commercial n'a traitées, et seulement si l'IA est activée."""
+    if not getattr(settings, "LLM_ENABLED", False):
+        return 0   # sans IA, re-scorer reproduirait le même repli 200 fois par run
+
+    rows = (
+        db.query(CompanyTender, Sotradies)
+        .join(Sotradies, Sotradies.id == CompanyTender.tender_id)
+        .filter(CompanyTender.decision == "a_verifier", CompanyTender.statut == "nouveau")
+        .order_by(CompanyTender.id)
+        .limit(limit)
+        .all()
+    )
+
+    reevalues = 0
+    for company_tender, tender in rows:
+        config = (
+            db.query(Configuration)
+            .filter(Configuration.company_id == company_tender.company_id)
+            .one_or_none()
+        )
+        if config is None or not config.categories:
+            continue
+        _score_company_tender(db, company_tender.company_id, tender, run_id, config, company_tender)
+        reevalues += 1
+    return reevalues
+
 
 
 def _enrich_with_ai(db, record: Sotradies, effective_source: str, tender_id: str, run_id: str) -> dict:
@@ -557,6 +645,8 @@ def run_pipeline(
                 ],
             },
         )
+
+        reevalues = _retry_pending_tenders(db, run_id)
 
         for scraper in scrapers:
             source_name = getattr(
@@ -838,6 +928,8 @@ def run_pipeline(
                 "ai_errors": ai_errors,
                 "sources_executees": executed_sources,
                 "sources_chargees": len(scrapers),
+                "reevalues_a_verifier": reevalues,
+
             },
         )
 
@@ -854,6 +946,8 @@ def run_pipeline(
         "ai_errors": ai_errors,
         "sources_chargees": len(scrapers),
         "sources_executees": executed_sources,
+        "reevalues_a_verifier": reevalues,
+
     }
     print(f"\n[pipeline] Résumé : {summary}")
     return summary

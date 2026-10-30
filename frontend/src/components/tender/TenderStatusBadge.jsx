@@ -1,4 +1,4 @@
-// src/components/tender/TenderStatusBadge.jsx
+﻿// src/components/tender/TenderStatusBadge.jsx
 const LABELS = {
   nouveau: { label: "Nouveau", cls: "bg-ink-800/10 text-ink-800" },
   retenu: { label: "Retenu", cls: "bg-teal-500/15 text-teal-600" },

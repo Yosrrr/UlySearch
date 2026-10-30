@@ -5,7 +5,7 @@ import ScoreBadge from "./ScoreBadge";
 import TenderStatusBadge from "./TenderStatusBadge";
 import { formatDate, daysUntil } from "../../utils/formatters";
 import { extractScoreInfo } from "../../utils/scoreDetails";
-
+import DecisionBadge from "./DecisionBadge";
 export default function TenderCard({ tender }) {
   const remaining = daysUntil(tender.date_limite);
   const urgent = remaining !== null && remaining <= 5;
@@ -48,6 +48,7 @@ export default function TenderCard({ tender }) {
           {remaining !== null && ` (${remaining >= 0 ? `J-${remaining}` : "dépassé"})`}
         </span>
         <TenderStatusBadge statut={tender.statut} />
+        <DecisionBadge decision={tender.decision} />
         {tender.commercial_assigne && (
           <span className="rounded-full bg-ink-800/10 px-2 py-1 text-ink-800">
             {tender.commercial_assigne}

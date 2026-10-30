@@ -1,99 +1,62 @@
 """
-Correspondance de mots-clés français / arabe, mot par mot.
+Correspondance de mots-clés : mot entier, accents, pluriels simples.
 
-- Un mot-clé est trouvé si TOUS ses mots apparaissent à la suite dans le texte.
-- Pluriel retiré sur CHAQUE mot (groupes électrogènes = groupe électrogène).
-- Arabe : voyelles, hamza (أ إ آ -> ا), ال / وال / بال / لل, suffixes ات / ين / ون / ة.
-- Mots entiers uniquement : « clim » ne trouve PAS « climatique ».
-- Pas d'unidecode : il abîme l'arabe.
+Usage :
+- exclusions du client (rejet dur, sans IA) ;
+- indices tracés dans mots_cles_matches (ils ne décident pas seuls).
+
+Les fautes de frappe ne sont pas gérées ici : c'est le rôle de l'IA contextuelle.
 """
+from __future__ import annotations
+
 import re
-import unicodedata
+from functools import lru_cache
+from typing import Any
 
-_ARABIC_CHARS = re.compile(r"[\u0600-\u06FF]")
-# voyelles + madda/hamza séparées par NFKD (0653-0655) + tatweel
-_TASHKEEL = re.compile(r"[\u064B-\u0655\u0670\u0640]")
-_SPLIT = re.compile(r"[^0-9a-z\u0600-\u06FF]+")
+from app.services.text_normalizer import normalize_text
 
-_STOPWORDS = {
-    "de", "du", "des", "la", "le", "les", "l", "d", "a", "au", "aux",
-    "et", "en", "pour", "un", "une", "sur", "par", "the", "of", "and",
-    "و", "في", "من", "على",
-}
-_AR_PREFIXES = ("وال", "بال", "كال", "فال", "لل", "ال")
-_AR_SUFFIXES = ("ات", "ين", "ون", "ه")
+__all__ = [
+    "normalize_text",
+    "contains_keyword",
+    "first_matching_keyword",
+    "match_keywords",
+]
 
 
-def _strip_latin_accents(text: str) -> str:
-    decomposed = unicodedata.normalize("NFKD", text)
-    return "".join(
-        c for c in decomposed
-        if not unicodedata.combining(c) or _ARABIC_CHARS.match(c)
-    )
+@lru_cache(maxsize=4096)
+def _pattern(keyword: str) -> re.Pattern | None:
+    tokens = normalize_text(keyword).split()
+    if not tokens:
+        return None
+    parts = [re.escape(token) + r"(?:s|x|es)?" for token in tokens]
+    return re.compile(r"(?<![a-z0-9])" + r"\s+".join(parts) + r"(?![a-z0-9])")
 
 
-def _stem_arabic(word: str) -> str:
-    word = _TASHKEEL.sub("", word)
-    word = re.sub("[إأآ]", "ا", word).replace("ى", "ي").replace("ة", "ه")
-    for prefix in _AR_PREFIXES:
-        if word.startswith(prefix) and len(word) - len(prefix) >= 3:
-            word = word[len(prefix):]
-            break
-    for suffix in _AR_SUFFIXES:
-        if word.endswith(suffix) and len(word) - len(suffix) >= 3:
-            word = word[: -len(suffix)]
-            break
-    return word
-
-
-def _stem_latin(word: str) -> str:
-    if len(word) > 3 and word[-1] in "sx" and not word.endswith("ss"):
-        return word[:-1]
-    return word
-
-
-def tokenize(text: str) -> list[str]:
-    """Texte -> liste de mots normalisés (sans mots vides)."""
-    if not text:
-        return []
-    text = _strip_latin_accents(str(text)).lower()
-    text = text.replace("’", " ").replace("'", " ")
-    tokens = []
-    for raw in _SPLIT.split(text):
-        if not raw:
-            continue
-        if _ARABIC_CHARS.search(raw):
-            raw = _TASHKEEL.sub("", raw)
-            if raw in _STOPWORDS:
-                continue
-            tokens.append(_stem_arabic(raw))
-        else:
-            if raw in _STOPWORDS:
-                continue
-            tokens.append(_stem_latin(raw))
-    return [t for t in tokens if t]
-
-
-def _contains_sequence(haystack: list[str], needle: list[str]) -> bool:
-    n = len(needle)
-    if n == 0 or n > len(haystack):
+def contains_keyword(text: Any, keyword: Any) -> bool:
+    if not isinstance(keyword, str):
         return False
-    return any(haystack[i:i + n] == needle for i in range(len(haystack) - n + 1))
+    pattern = _pattern(keyword)
+    return bool(pattern and pattern.search(normalize_text(text)))
 
 
-def match_keywords(text: str, keywords) -> list:
-    """Retourne les mots-clés trouvés. Deux variantes identiques une fois
-    normalisées (accent, pluriel) ne comptent qu'une seule fois."""
-    if not text or not keywords:
-        return []
-    text_tokens = tokenize(text)
-    found, seen = [], set()
-    for kw in keywords:
-        kw_tokens = tokenize(str(kw or ""))
-        key = tuple(kw_tokens)
-        if not kw_tokens or key in seen:
+def first_matching_keyword(text: Any, keywords: Any) -> str | None:
+    normalized = normalize_text(text)
+    for keyword in keywords or []:
+        if not isinstance(keyword, str):
             continue
-        if _contains_sequence(text_tokens, kw_tokens):
-            seen.add(key)
-            found.append(kw)
+        pattern = _pattern(keyword)
+        if pattern and pattern.search(normalized):
+            return keyword
+    return None
+
+
+def match_keywords(text: Any, keywords: Any) -> list[str]:
+    normalized = normalize_text(text)
+    found: list[str] = []
+    for keyword in keywords or []:
+        if not isinstance(keyword, str) or keyword in found:
+            continue
+        pattern = _pattern(keyword)
+        if pattern and pattern.search(normalized):
+            found.append(keyword)
     return found

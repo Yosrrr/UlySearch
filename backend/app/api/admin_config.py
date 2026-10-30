@@ -3,8 +3,10 @@ from datetime import datetime, UTC
 from typing import Optional, Dict, List, Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
+from pydantic import BaseModel, ConfigDict, Field
+from app.services.config_service import get_or_create_config
+
 
 from app.core.database import get_db
 from app.api.deps import require_admin_or_superadmin
@@ -12,7 +14,7 @@ from app.models.configuration import Configuration
 from app.models.commercial import Commercial
 from app.models.company_source import CompanySource
 from app.models.scraping_source import ScrapingSource
-from app.services.config_service import get_or_create_config
+
 
 router = APIRouter(prefix="/admin/config", tags=["admin-config"])
 
@@ -116,6 +118,14 @@ class ConfigurationResponse(BaseModel):
     derniere_modification: datetime
     modifie_par: Optional[str]
     notes: Optional[str]
+    description_activite: Optional[str] = None
+
+
+class DescriptionActiviteUpdate(BaseModel):
+    description_activite: Optional[str] = Field(default=None, max_length=2000)
+
+class ProfilClientUpdate(BaseModel):
+    description_activite: Optional[str] = None
 
 def _runtime_active_sources(db: Session, user: dict, config: Configuration):
     company_id = user.get("context_company_id")
@@ -265,6 +275,23 @@ def update_assignment_rules(
         payload.assignment_rules,
         _commercial_names(db, user),
     )
+    config.derniere_modification = datetime.now(UTC).replace(tzinfo=None)
+    config.modifie_par = user.get("sub")
+
+    db.commit()
+    db.refresh(config)
+    return _configuration_response(db, config, user)
+@router.put("/description-activite")
+def update_description_activite(
+    payload: DescriptionActiviteUpdate,
+    db: Session = Depends(get_db),
+    user: dict = Depends(require_admin_or_superadmin),
+):
+    """Met à jour la fiche d'activité de l'entreprise, utilisée comme contexte du filtre IA."""
+    config = _config_for_user(db, user)
+
+    texte = (payload.description_activite or "").strip()
+    config.description_activite = texte or None
     config.derniere_modification = datetime.now(UTC).replace(tzinfo=None)
     config.modifie_par = user.get("sub")
 

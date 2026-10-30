@@ -8,49 +8,52 @@ class Settings(BaseSettings):
     ENV: str = "development"
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
     ALLOW_PROCESS_CONTROL: bool = False
-    
-    LLM_ENABLED: bool = False
+
+    LLM_ENABLED: bool = True
+    AI_RESCUE_FUZZY_THRESHOLD: float = 0.8
+    AI_RESCUE_ENABLED: bool = False 
+
     RUN_PIPELINE_ON_REGISTER: bool = False
 
 
     DATABASE_URL: str = "postgresql+psycopg://sotradies_user:sotradies_pass@localhost:5432/sotradies_watch"
     REDIS_URL: str = "redis://localhost:6379/0"
-    
+
     JWT_SECRET_KEY: str = "changez-moi-en-production-avec-une-vraie-cle-secrete"
     JWT_EXPIRE_MINUTES: int = 480  # 8h — une journée de travail
     SOURCE_CREDENTIALS_KEY: str = "changez-moi-source-credentials-key"
 
     CACHE_REDIS_URL: str = "redis://localhost:6379/2"
     AI_PUBLIC_RATE_LIMIT: str = "10/hour"
-    
-    ADMIN_ALERT_EMAIL: str = "alertes@sotradies.tn"    
+
+    ADMIN_ALERT_EMAIL: str = "alertes@sotradies.tn"
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SENDER_EMAIL: str = "veille-ao@sotradies.tn"
-    
-    
 
 
-    
+
+
+
     OLLAMA_HOST: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "qwen3.5:9b"
     OLLAMA_NUM_CTX: int = 8192
     OLLAMA_NUM_PREDICT: int =4096
     OLLAMA_TIMEOUT_SECONDS: float = 300.0
-    
-    
+
+
     TESSERACT_CMD: str = ""   # chemin vers tesseract.exe si absent du PATH (souvent nécessaire sous Windows)
     POPPLER_PATH: str = ""    # dossier bin/ de Poppler si absent du PATH (requis par pdf2image pour les PDF scannés)
 
-    
-   
-    
+
+
+
     DIRECTION_EMAIL: str = ""
 
     RELEVANCE_RETAIN_THRESHOLD: int = 50
-    
+
     # ✅ FIX Pydantic v2 : @classmethod + (cls, v) obligatoires
     @field_validator("DATABASE_URL", mode="before")
     @classmethod

@@ -106,15 +106,13 @@ def _filtered_for_client(
             Sotradies.objet.ilike(like) | Sotradies.acheteur.ilike(like)
         )
 
-    # ── Statut / décision ──
     if statut and statut != "Tous":
         if statut == "retenu":
-            query = query.filter(CompanyTender.decision == "retenu")
+            query = query.filter(CompanyTender.decision.in_(("retenu", "a_verifier")))
         elif statut == "rejete":
-            query = query.filter(CompanyTender.decision == "rejete")
+            query = query.filter(CompanyTender.decision.in_(("rejete", "a_examiner")))
         else:
             query = query.filter(CompanyTender.statut == statut)
-
     # ── Filtre commercial par NOM : jointure au lieu d'une boucle Python ──
     if commercial and commercial != "Tous":
         query = query.join(
@@ -352,7 +350,7 @@ def list_rejected_tenders(
     - superadmin : vue brute Sotradies (score calculé en Python → filtre
       puis pagination en Python, même pattern que _filtered_for_superadmin ;
       optimisation SQL = ticket P3)
-    - client : CompanyTender.decision == "rejete" (pagination SQL)
+    - client : CompanyTender.decision IN ("rejete", "a_examiner") (pagination SQL)
     """
     if _is_superadmin(user):
         threshold = getattr(settings, "RELEVANCE_RETAIN_THRESHOLD", 50)
@@ -391,7 +389,7 @@ def list_rejected_tenders(
         .join(Sotradies, Sotradies.id == CompanyTender.tender_id)
         .filter(
             CompanyTender.company_id == company_id,
-            CompanyTender.decision == "rejete",
+            CompanyTender.decision.in_(("rejete", "a_examiner")),
         )
     )
 
@@ -559,7 +557,6 @@ def update_tender_status(
     if _is_superadmin(user):
         if payload.statut not in SUPERADMIN_STATUTS:
             raise HTTPException(status_code=400, detail="Statut invalide.")
-
         t = db.query(Sotradies).filter_by(id=tender_id).first()
         if not t:
             raise HTTPException(status_code=404, detail="Marché introuvable")
@@ -610,6 +607,8 @@ def update_tender_status(
 
         ancien = match.statut          # TECH-001 : assignation obligatoire
         match.statut = payload.statut
+        if match.decision == "a_verifier" and payload.statut != "nouveau":
+            match.decision = "retenu"   # action humaine = confirmation : plus de badge, plus de re-scoring
 
         action = "changement_statut"
         detail = f"{ancien} -> {payload.statut}"

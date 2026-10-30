@@ -15,6 +15,16 @@ from sqlalchemy.orm import Session
 
 from app.models.configuration import Configuration
 
+PROFIL_MAX_CHARS = 1500
+def normalize_profil(value) -> str | None:
+    """Fiche d'activité : espaces compactés, lignes vides supprimées, None si vide."""
+    if value is None:
+        return None
+    lignes = [" ".join(l.split()) for l in str(value).splitlines()]
+    texte = "\n".join(l for l in lignes if l).strip()
+    if len(texte) > PROFIL_MAX_CHARS:
+        raise ValueError(f"description_activite : {PROFIL_MAX_CHARS} caractères maximum")
+    return texte or None
 
 def get_or_create_config(db: Session, company_id: int | None = None) -> Configuration:
     query = db.query(Configuration)

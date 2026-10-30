@@ -1,7 +1,6 @@
 """Paramètres de configuration du système (mots-clés, seuils, sources actives, assignation)."""
 from sqlalchemy import Column, Integer, String, Text, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
-
 from app.core.time_utils import now_naive
 from app.core.database import Base
 
@@ -12,14 +11,16 @@ class Configuration(Base):
     __tablename__ = "configuration"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    
+
     # ===== Seuils de pertinence (Layer 4) =====
     score_decision_threshold = Column(Integer, default=50, nullable=False)
     # Score minimum pour qu'un marché soit "retenu" (pourcentage, 0-100)
-    
+
     score_instant_alert_threshold = Column(Integer, default=70, nullable=False)
+    description_activite = Column(Text, nullable=True)
+
     # Score pour déclencher une alerte instantanée (vs digest quotidien)
-    
+
     # ===== Mots-clés et catégories (Layer 4, Tier 1) =====
     # Stockés en JSONB pour permettre modification dynamique sans redéploiement
     # Format: {
@@ -31,8 +32,8 @@ class Configuration(Base):
     #   ...
     # }
     categories = Column(JSONB, nullable=False, default=dict)
-    
-    
+
+
     company_id = Column(
         Integer,
         ForeignKey("companies.id", ondelete="CASCADE"),
@@ -47,7 +48,7 @@ class Configuration(Base):
     )
     # Mots-clés d'exclusion (liste simple)
     exclusion_keywords = Column(JSONB, nullable=False, default=list)
-    
+
     # ===== Sources de scraping actives (Layer 1) =====
     # Format: {
     #   "tuneps": {"actif": true, "frquence": "daily"},
@@ -55,7 +56,7 @@ class Configuration(Base):
     #   "observatoire_national": {"actif": false, "frequence": "daily"}
     # }
     active_sources = Column(JSONB, nullable=False, default=dict)
-    
+
     # ===== Assignation commerciale (Layer 7) =====
     # Format: {
     #   "MATERIEL_ROULANT": ["Ramzi Trabelsi"],
@@ -64,13 +65,13 @@ class Configuration(Base):
     #   ...
     # }
     assignment_rules = Column(JSONB, nullable=False, default=dict)
-    
+
     # ===== Metadata =====
     derniere_modification = Column(
     DateTime, default=now_naive, onupdate=now_naive, nullable=False
     )
     modifie_par = Column(String(255), nullable=True)  # email de l'utilisateur
     notes = Column(Text, nullable=True)
-    
+
     def __repr__(self) -> str:
         return f"<Configuration id={self.id} seuil_decision={self.score_decision_threshold}%>"

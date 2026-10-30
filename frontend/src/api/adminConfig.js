@@ -4,7 +4,10 @@ export async function getConfiguration() {
   const { data } = await apiClient.get("/admin/config");
   return data;
 }
-
+export async function updateDescriptionActivite(description_activite) {
+  const { data } = await apiClient.put("/admin/config/description-activite", { description_activite });
+  return data;
+}
 export async function updateThresholds(score_decision_threshold, score_instant_alert_threshold) {
   const { data } = await apiClient.put("/admin/config/thresholds", {
     score_decision_threshold,
